@@ -269,7 +269,7 @@ Tamaño: **S** · **M** · **L**. Una fase a la vez y en orden.
 
 ### Fase 3 · Cimientos — M · *hecha en local (D25), 2026-11-01*
 
-- [ ] Repo privado en GitHub, proyecto Supabase y Vercel con rama `produccion` — **cuando Gustavo diga (D25)**
+- [x] Repo en GitHub (público, D36), proyecto Supabase y Vercel con rama `produccion` — 2026-11-14
 - [x] Astro 7 + React 19 + TS 6 con las versiones de Aura (mismo lockfile); tokens Vino; Bebas Neue e Inter autoalojadas
 - [x] Copiado y **adaptado** de Aura: `scripts/` (ids de Aura, Pulso, GMDevz y Rutami rechazados), `.github/` (CI, respaldo, plantillas), skills, agente `jp-ui`, hook de solo lectura (`pulso`, `aura`, `Empresa`, `Pagina`, `rutami`) y de secretos, probado con JSON
 - [x] Supabase local en puertos 573xx
