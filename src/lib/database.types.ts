@@ -635,6 +635,9 @@ isOneToOne: false
 "register_supply":
 { Args: { "p_kind": Database["public"]['Enums']["supply_move_kind"],"p_note"?: string,"p_qty": number,"p_supply": string }; Returns: number
                            },
+"revoke_sessions":
+{ Args: { "p_user": string }; Returns: undefined
+                           },
 "sales_export":
 { Args: { "p_days"?: number }; Returns: {
               "canal": string,"codigo": string,"cupon": string,"descuento": number,"domicilio": number,"estado": string,"fecha": string,"pago": string,"productos": string,"subtotal": number,"total": number
@@ -657,6 +660,9 @@ isOneToOne: false
                            },
 "team_list":
 { Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"team_restaurant":
+{ Args: Record<PropertyKey, never>; Returns: string
                            },
 "track_order":
 { Args: { "p_code": string,"p_restaurant": string,"p_token": string }; Returns: Json

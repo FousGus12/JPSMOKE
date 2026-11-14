@@ -117,6 +117,7 @@ create function private.guard_staff_delete() returns trigger
 language plpgsql security definer set search_path = ''
 as $$
 begin
+  perform 1 from public.restaurants where id = old.restaurant_id for update;
   if old.role = 'admin' and old.active and not exists (select 1 from public.staff s
       where s.restaurant_id = old.restaurant_id and s.user_id <> old.user_id and s.role = 'admin' and s.active) then
     raise exception 'El restaurante necesita al menos un admin activo' using errcode = '42501', hint = 'ultimo_admin';
@@ -483,8 +484,15 @@ begin
 end;
 $function$;
 
+-- Contraseña temporal nueva = cerrar las sesiones abiertas de esa cuenta (solo el servidor).
+create function public.revoke_sessions(p_user uuid) returns void
+language sql security definer set search_path = ''
+as $$ delete from auth.sessions where user_id = p_user $$;
+
 -- Cierre (D34): nada nuevo abierto para anon; el sitio sigue con track_order y stock_status.
 revoke execute on all functions in schema public from public, anon;
 grant execute on function public.track_order(text, text, text) to anon, authenticated;
 grant execute on function public.stock_status(text) to anon, authenticated;
 grant execute on function public.can(text), public.can_of(uuid, text), public.team_list(), public.team_restaurant() to authenticated;
+revoke execute on function public.revoke_sessions(uuid) from authenticated;
+grant execute on function public.revoke_sessions(uuid) to service_role;

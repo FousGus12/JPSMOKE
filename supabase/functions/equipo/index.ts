@@ -26,7 +26,7 @@ Deno.serve((request) =>
         email_confirm: true,
         user_metadata: { full_name: fullName },
       });
-      if (error) return { id: null, exists: error.code === 'email_exists' || error.status === 422 };
+      if (error) return { id: null, exists: error.code === 'email_exists' };
       return { id: data.user?.id ?? null, exists: false };
     },
     deleteUser: async (id) => {
@@ -52,7 +52,10 @@ Deno.serve((request) =>
     },
     setPassword: async (userId, password) => {
       const { error } = await service.auth.admin.updateUserById(userId, { password });
-      return !error;
+      if (error) return false;
+      // La clave anterior pudo estar comprometida: se cierran sus sesiones abiertas.
+      const { error: revoke } = await service.rpc('revoke_sessions', { p_user: userId });
+      return !revoke;
     },
     randomPassword,
     allowedOrigins: (Deno.env.get('CORS_ALLOWED_ORIGINS') ?? 'local')
