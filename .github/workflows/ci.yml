@@ -2,10 +2,10 @@
 #
 # Corre en cada PR y en cada push a main, en un servidor limpio. Un PR en rojo no se une.
 # - datos: los cambios no traen claves, tokens, .env ni volcados (scripts/revisar-datos.sh).
-# - app: tipos, lint, formato, unitarias, build (lo mismo que Vercel) y revisión del build (CSP, sin style ni sourcemaps).
+# - app: tipos, lint, formato y unitarias.
 # - base: TODAS las migraciones sobre un Postgres nuevo + pruebas de permisos (pgTAP).
 # - funciones: tipos y pruebas de las Edge Functions (Deno).
-# - e2e: flujos en escritorio, Android e iPhone simulados sobre el build, contra un Supabase LOCAL
+# - e2e: build (lo mismo que Vercel) y su revisión (CSP, sin style ni sourcemaps); flujos en escritorio, Android e iPhone simulados sobre el build, contra un Supabase LOCAL
 #   (nunca el remoto: las pruebas crean pedidos).
 
 name: CI
@@ -47,8 +47,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: node scripts/revisar-build.mjs
+      # El build prerenderiza con datos de la base: se compila y revisa en el job e2e, que levanta Supabase local.
+      - run: pnpm exec astro check
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm test
@@ -111,4 +111,5 @@ jobs:
           printf 'PUBLIC_SUPABASE_URL=http://127.0.0.1:57321\nPUBLIC_SUPABASE_ANON_KEY=%s\nPUBLIC_RESTAURANT_SLUG=jp-smoke\nSITE_URL=https://jp-smoke.vercel.app\n' "$ANON" > .env.production.local
       - run: pnpm exec playwright install --with-deps chromium webkit
       - run: pnpm exec astro build
+      - run: node scripts/revisar-build.mjs
       - run: pnpm exec playwright test --workers=1
