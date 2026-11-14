@@ -1,0 +1,47 @@
+---
+import Site from '../layouts/Site.astro';
+import { loadSiteData } from '../lib/content';
+import { formatCop } from '../core/money';
+
+const site = await loadSiteData();
+const name = site.restaurant.name;
+---
+
+<Site
+  site={site}
+  title={`Términos y condiciones · ${name}`}
+  description={`Términos y condiciones de pedidos en ${name}.`}
+>
+  <article class="legal">
+    <p class="eyebrow">Condiciones de uso</p>
+    <h1 class="display">Términos y condiciones</h1>
+    <h2>Pedidos</h2>
+    <ul>
+      <li>
+        Los precios están en pesos colombianos e incluyen impoconsumo. El total final es el que muestra la
+        confirmación.
+      </li>
+      <li>
+        Pedido mínimo para domicilio: {formatCop(site.deliveryMin)}. El costo del domicilio depende de tu
+        localidad.
+      </li>
+      <li>
+        Tiempo estimado de entrega: {site.deliveryEta}. Puede variar por clima, tráfico o volumen de pedidos.
+      </li>
+      <li>
+        Podemos cancelar pedidos con datos incompletos, fuera de cobertura o que no se puedan confirmar.
+      </li>
+    </ul>
+    <h2 id="cupones">Cupones y promociones</h2>
+    <ul>
+      <li>Cada cupón tiene vigencia, pedido mínimo y número de usos. Por defecto, un uso por celular.</li>
+      <li>No son acumulables entre sí ni canjeables por dinero.</li>
+      <li>El cupón de bienvenida es uno por celular.</li>
+    </ul>
+    <h2>Seguimiento</h2>
+    <p>
+      Al confirmar recibes un enlace único para seguir tu pedido. No lo compartas si no quieres que otros vean
+      su estado.
+    </p>
+  </article>
+</Site>

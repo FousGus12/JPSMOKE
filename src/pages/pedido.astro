@@ -1,0 +1,25 @@
+---
+// Seguimiento sin cuenta (D21): /pedido?c=JP-0042&t=<token>, o búsqueda por código + últimos 4 dígitos.
+// La página es estática; el estado se consulta en vivo a la función seguir-pedido (nunca trae el celular).
+import Site from '../layouts/Site.astro';
+import { loadSiteData } from '../lib/content';
+
+const site = await loadSiteData();
+---
+
+<Site
+  site={site}
+  title={`Mi pedido · ${site.restaurant.name}`}
+  description="Sigue tu pedido en vivo."
+  noindex
+>
+  <div class="track track-page" id="track-main" aria-live="polite">
+    <section class="track-hero">
+      <p class="code">Buscando tu pedido…</p>
+    </section>
+  </div>
+</Site>
+
+<script>
+  import '../scripts/seguimiento';
+</script>

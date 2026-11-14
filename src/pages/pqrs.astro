@@ -1,0 +1,33 @@
+---
+import Site from '../layouts/Site.astro';
+import { loadSiteData } from '../lib/content';
+
+const site = await loadSiteData();
+const wa = site.whatsapp
+  ? `https://wa.me/${site.whatsapp}?text=${encodeURIComponent('Hola, quiero radicar una PQRS. Código de pedido (si aplica): ')}`
+  : null;
+---
+
+<Site
+  site={site}
+  title={`PQRS · ${site.restaurant.name}`}
+  description="Peticiones, quejas, reclamos y sugerencias."
+>
+  <article class="legal">
+    <p class="eyebrow">Atención al cliente</p>
+    <h1 class="display">PQRS</h1>
+    <p>
+      Peticiones, quejas, reclamos y sugerencias. Incluye el código de tu pedido si aplica (por ejemplo
+      JP-0042).
+    </p>
+    <ul>
+      <li>Respondemos peticiones en máximo 15 días hábiles.</li>
+      <li>Consultas sobre tus datos personales: máximo 10 días hábiles; reclamos: 15 días hábiles.</li>
+    </ul>
+    {wa && (
+      <a class="btn btn-primary" href={wa} target="_blank" rel="noopener">
+        Radicar por WhatsApp
+      </a>
+    )}
+  </article>
+</Site>

@@ -1,0 +1,56 @@
+/* JP Smoke · tokens (D3: dirección Vino). Cada restaurante sobrescribe estos valores con su marca (D23). */
+@font-face {
+  font-family: 'Bebas Neue';
+  src: url('/fonts/bebas.woff2') format('woff2');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-ext.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+  unicode-range: U+0100-024F, U+1E00-1EFF;
+}
+
+:root {
+  --bg: #260212;
+  --surface: #4f0423;
+  --surface-2: #5e0a2d;
+  --line: #000000;
+  --text: #ffffff;
+  --text-2: #ffc7c6;
+  --muted: #e19a9c;
+  --accent: #e10600; /* rellenos: botones, etiquetas, estados activos (texto blanco encima, 4,9:1) */
+  --accent-text: #ff6a5c; /* rojo para TEXTO sobre vino: 6,7:1 en el fondo y 5,2:1 en tarjetas (AA) */
+  --on-accent: #ffffff;
+  --accent-soft: #ffc7c6;
+  --accent-2: #ffc7c6;
+  --danger: #ff8a85;
+  --ok: #9be3a5;
+  --warn: #f5c26b;
+  --font-display: 'Bebas Neue', Impact, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --display-tracking: 0.04em;
+  --display-leading: 0.96; /* D18: las frases de dos líneas no se pegan */
+  /* Intensidad del ambiente (2026-11-01, bajada a pedido de Gustavo): grano, resplandor del inicio y humo. */
+  --grain: 0.025;
+  --glow: 13%;
+  --smoke: 0.22;
+  --r-pill: 15px;
+  --r-card: 14px;
+  --r-feature: 38px;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --t1: 160ms;
+  --t2: 240ms;
+  --t3: 500ms;
+  --t4: 900ms;
+  --page-max: 1280px;
+  --gutter: clamp(16px, 4vw, 40px);
+  color-scheme: dark;
+}

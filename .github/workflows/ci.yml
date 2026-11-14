@@ -1,0 +1,114 @@
+# Verificación automática (CI) — JP Smoke
+#
+# Corre en cada PR y en cada push a main, en un servidor limpio. Un PR en rojo no se une.
+# - datos: los cambios no traen claves, tokens, .env ni volcados (scripts/revisar-datos.sh).
+# - app: tipos, lint, formato, unitarias, build (lo mismo que Vercel) y revisión del build (CSP, sin style ni sourcemaps).
+# - base: TODAS las migraciones sobre un Postgres nuevo + pruebas de permisos (pgTAP).
+# - funciones: tipos y pruebas de las Edge Functions (Deno).
+# - e2e: flujos en escritorio, Android e iPhone simulados sobre el build, contra un Supabase LOCAL
+#   (nunca el remoto: las pruebas crean pedidos).
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ASTRO_TELEMETRY_DISABLED: '1'
+
+jobs:
+  datos:
+    name: Datos sensibles
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: scripts/revisar-datos.sh ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD~1' }}
+
+  app:
+    name: App (tipos, lint, pruebas, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.11.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: node scripts/revisar-build.mjs
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm test
+      - run: pnpm audit --audit-level high
+
+  base:
+    name: Base de datos (migraciones desde cero + RLS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.120.0
+      - run: supabase db start
+      - run: supabase test db
+
+  funciones:
+    name: Edge Functions (Deno)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Tipos y pruebas de cada función
+        run: |
+          for d in supabase/functions/*/deno.json; do
+            (cd "$(dirname "$d")" && deno task check && deno task test)
+          done
+
+  e2e:
+    name: e2e (escritorio, Android, iPhone)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.11.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.120.0
+      - run: pnpm install --frozen-lockfile
+      - name: Secretos solo para esta corrida (Turnstile apagado en local)
+        run: printf 'TURNSTILE_SECRET=off-local\nIP_SALT=ci\nMAX_PER_HOUR_IP=1000\n' > supabase/functions/.env
+      - name: Supabase local (base, Auth, API y funciones)
+        # Si el registro de imágenes limita las descargas, fallar rápido en vez de agotar los 25 min del job.
+        timeout-minutes: 8
+        run: supabase start -x studio,imgproxy,vector,logflare,supavisor
+      - name: Usuarios de prueba y variables locales
+        run: |
+          psql postgresql://postgres:postgres@127.0.0.1:57322/postgres -q -f supabase/dev-users.sql
+          ANON=$(supabase status -o json | python3 -c 'import json,sys; print(json.load(sys.stdin)["ANON_KEY"])')
+          printf 'PUBLIC_SUPABASE_URL=http://127.0.0.1:57321\nPUBLIC_SUPABASE_ANON_KEY=%s\nPUBLIC_RESTAURANT_SLUG=jp-smoke\nSITE_URL=https://jp-smoke.vercel.app\n' "$ANON" > .env.production.local
+      - run: pnpm exec playwright install --with-deps chromium webkit
+      - run: pnpm exec astro build
+      - run: pnpm exec playwright test --workers=1

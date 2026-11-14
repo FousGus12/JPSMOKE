@@ -1,0 +1,633 @@
+---
+// Sitio público (F4). Portado del mockup aprobado; el contenido sale de la base en el build (D24, D26).
+import Site from '../layouts/Site.astro';
+import ProductCard from '../components/site/ProductCard.astro';
+import MenuItem from '../components/site/MenuItem.astro';
+import Logo from '../components/Logo.astro';
+import { loadSiteData } from '../lib/content';
+import { formatCop } from '../core/money';
+import { restaurantJsonLd } from '../core/jsonld';
+
+const site = await loadSiteData();
+const on = (key: string) => site.sections[key] !== false;
+const heroProducts = site.products.filter((product) => product.hero && product.image).slice(0, 4);
+const featured = site.products.filter((product) => product.featured);
+const extras = site.categories.find((category) => category.slug === 'adicionales');
+const dishes = site.products.filter((product) => product.categoryId !== extras?.id).length;
+const extrasCount = site.products.length - dishes;
+const stripEvents = site.events.filter((event) => event.showStrip);
+const sectionEvents = site.events.filter((event) => event.showSection);
+const intro = site.events.find((event) => event.showIntro) ?? null;
+const visibleCoupons = site.coupons.filter((coupon) => coupon.title);
+const titleWords = site.hero.title.trim().split(/\s+/);
+const wa = site.whatsapp
+  ? `https://wa.me/${site.whatsapp}?text=${encodeURIComponent(`¡Hola ${site.restaurant.name}! Quiero hacer un pedido 🔥`)}`
+  : null;
+const dateFmt = new Intl.DateTimeFormat('es-CO', {
+  day: 'numeric',
+  month: 'long',
+  timeZone: 'America/Bogota',
+});
+const siteUrl = Astro.site?.toString() ?? '';
+const jsonLd = [restaurantJsonLd(site, siteUrl)];
+---
+
+<Site
+  site={site}
+  title={`${site.restaurant.name} · Hamburguesas al barril en Bogotá`}
+  description={site.hero.text || `${site.restaurant.name}: pide a domicilio en Bogotá.`}
+  jsonLd={jsonLd}
+>
+  <Fragment slot="before">
+    {intro && (
+      <div
+        class="intro"
+        id="intro"
+        hidden
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="intro-title"
+        data-mode={site.introMode}
+      >
+        {intro.image && <img class="intro-bg" src={intro.image} alt="" />}
+        <div class="intro-smoke" aria-hidden="true" />
+        <div class="intro-inner">
+          <div class="intro-logo logo">
+            <Logo name={site.restaurant.name} />
+          </div>
+          <p class="eyebrow">{intro.kicker}</p>
+          <h2 class="display intro-title" id="intro-title">
+            {intro.title}
+          </h2>
+          <p class="intro-text">{intro.body}</p>
+          <div class="intro-load" aria-hidden="true">
+            <span id="intro-bar" />
+          </div>
+          <div class="intro-actions">
+            <a class="btn btn-primary btn-lg" href={intro.ctaHref} data-intro-close>
+              {intro.ctaLabel}
+            </a>
+            <button class="btn btn-ghost btn-lg" type="button" data-intro-close>
+              Entrar al sitio
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    {intro && (
+      <div
+        class="popup"
+        id="popup"
+        hidden
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pop-title"
+        data-event={intro.id}
+      >
+        <div class="popup-card">
+          <button class="popup-x" type="button" data-pop-close aria-label="Cerrar">
+            ✕
+          </button>
+          {intro.capturesLeads ? (
+            <div id="pop-body">
+              <p class="eyebrow">Cupón de bienvenida</p>
+              <h2 class="display popup-title" id="pop-title">
+                Tu primera mordida va con descuento
+              </h2>
+              <p class="popup-text">Déjanos tu nombre y celular y te damos un cupón para tu pedido.</p>
+              <form id="pop-form" novalidate>
+                <div class="field">
+                  <label for="p-name">Nombre</label>
+                  <input class="input" id="p-name" autocomplete="given-name" required />
+                </div>
+                <div class="field">
+                  <label for="p-phone">Celular</label>
+                  <input
+                    class="input"
+                    id="p-phone"
+                    inputmode="numeric"
+                    autocomplete="tel-national"
+                    placeholder="300 123 4567"
+                    required
+                  />
+                </div>
+                <a class="terms-link" href="/terminos#cupones">
+                  ⓘ Ver términos y condiciones del cupón
+                </a>
+                <input class="hp" tabindex="-1" autocomplete="off" id="p-hp" aria-hidden="true" />
+                <label class="check">
+                  <input type="checkbox" id="p-ok" />
+                  <span>
+                    He leído y acepto los términos y la{' '}
+                    <a href="/privacidad">política de tratamiento de datos</a>, y autorizo a{' '}
+                    {site.restaurant.name} a enviarme este cupón.
+                  </span>
+                </label>
+                <p class="form-error" id="pop-error" hidden />
+                <button class="btn btn-primary btn-lg btn-block" type="submit">
+                  Quiero mi cupón
+                </button>
+              </form>
+            </div>
+          ) : (
+            <div id="pop-body">
+              <p class="eyebrow">{intro.kicker}</p>
+              <h2 class="display popup-title" id="pop-title">
+                {intro.title}
+              </h2>
+              <p class="popup-text">{intro.body}</p>
+              <a class="btn btn-primary btn-lg btn-block" href={intro.ctaHref} data-pop-close>
+                {intro.ctaLabel}
+              </a>
+            </div>
+          )}
+          <button class="popup-later" type="button" data-pop-close>
+            Ahora no
+          </button>
+        </div>
+      </div>
+    )}
+  </Fragment>
+
+  <section class="hero" id="inicio" aria-label="Inicio">
+    <div class="hero-stage">
+      <div class="hero-embers" aria-hidden="true"></div>
+      <div class="hero-copy">
+        <p class="eyebrow">{site.hero.kicker}</p>
+        <h1 class="display hero-title">
+          {titleWords.map((word, i) => (
+            <>
+              {i > 0 && ' '}
+              <span class={`w${i + 1}`}>{word}</span>
+            </>
+          ))}
+        </h1>
+        <p class="hero-sub">{site.hero.text}</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary btn-lg" href="#carta">
+            Pedir ahora
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
+              <path d="M5 12h14M13 6l6 6-6 6"></path>
+            </svg>
+          </a>
+          {wa && (
+            <a class="btn btn-ghost btn-lg" href={wa} target="_blank" rel="noopener">
+              Pedir por WhatsApp
+            </a>
+          )}
+        </div>
+        {(site.channels.rappi.visible || site.channels.didi.visible) && (
+          <div class="hero-channels">
+            <span class="hero-channels-label">¿Prefieres app?</span>
+            {site.channels.rappi.visible && (
+              <a class="btn btn-soft btn-sm" href={site.channels.rappi.url} target="_blank" rel="noopener">
+                Rappi
+              </a>
+            )}
+            {site.channels.didi.visible && (
+              <a class="btn btn-soft btn-sm" href={site.channels.didi.url} target="_blank" rel="noopener">
+                DiDi Food
+              </a>
+            )}
+          </div>
+        )}
+        <p class="hero-note">
+          <span class="dot"></span> Solo domicilio · punto físico muy pronto
+        </p>
+      </div>
+      <div class="hero-cards" id="hero-cards">
+        {heroProducts.map((product, i) => (
+          <button
+            class:list={['hcard', `hcard-${i + 1}`]}
+            type="button"
+            data-add={product.id}
+            aria-label={`${product.name}, ${formatCop(product.price)}. Agregar al pedido`}
+          >
+            <img
+              src={product.image}
+              alt=""
+              width="320"
+              height="400"
+              fetchpriority={i < 2 ? 'high' : 'auto'}
+              loading={i < 2 ? 'eager' : 'lazy'}
+            />
+            <span class="hcard-label">
+              <b>{product.name}</b>
+              <span>{formatCop(product.price)}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+      <div class="hero-scroll" aria-hidden="true">
+        Baja <span>↓</span>
+      </div>
+    </div>
+  </section>
+
+  {stripEvents.length > 0 && on('eventos') && (
+    <div class="strip" aria-label="Novedades">
+      <div class="strip-track">
+        {Array.from({ length: 8 }).flatMap((_, round) =>
+          stripEvents.map((event) => (
+            <a
+              href={event.ctaHref}
+              aria-hidden={round > 0 ? 'true' : undefined}
+              tabindex={round > 0 ? -1 : undefined}
+            >
+              {event.title} · {event.kicker}
+            </a>
+          )),
+        )}
+      </div>
+    </div>
+  )}
+
+  {on('arsenal') && featured.length > 0 && (
+    <section class="section" id="arsenal">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="eyebrow">El arsenal pesado</p>
+          <h2 class="display h-xl">
+            Directo
+            <br />
+            del barril
+          </h2>
+          <p class="lead">
+            Los que más salen. ¿Quieres verlo todo? <a href="#carta">Ve a la carta completa</a>.
+          </p>
+        </div>
+        <div class="carousel reveal">
+          <div class="carousel-track" id="arsenal-track" tabindex="0" aria-label="Productos destacados">
+            {featured.map((product) => (
+              <ProductCard product={product} />
+            ))}
+          </div>
+          <div class="carousel-nav">
+            <button class="round-btn" type="button" data-scroll="-1" aria-label="Anterior">
+              ←
+            </button>
+            <button class="round-btn" type="button" data-scroll="1" aria-label="Siguiente">
+              →
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  )}
+
+  {on('carta') && (
+    <section class="section section-alt" id="carta">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="eyebrow">La carta completa</p>
+          <h2 class="display h-xl">
+            Conócelos
+            <br />
+            todos
+          </h2>
+          <p class="lead">
+            {dishes} platos y {extrasCount} adicionales salidos del barril. Precios en pesos, impoconsumo
+            incluido.
+          </p>
+        </div>
+      </div>
+      <div class="carta-bar">
+        <div class="wrap carta-bar-in">
+          <div class="pills" id="carta-pills" role="toolbar" aria-label="Categorías">
+            <button class="pill" type="button" data-cat="todo" aria-pressed="true">
+              Todo
+            </button>
+            {site.categories.map((category) => (
+              <button class="pill" type="button" data-cat={category.slug} aria-pressed="false">
+                {category.emoji} {category.name}
+                <span class="count">
+                  {site.products.filter((product) => product.categoryId === category.id).length}
+                </span>
+              </button>
+            ))}
+          </div>
+          <label class="search">
+            <span class="sr-only">Buscar en la carta</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"></circle>
+              <path d="m20 20-4-4"></path>
+            </svg>
+            <input
+              type="search"
+              id="carta-search"
+              placeholder="Buscar: costilla, tocineta…"
+              autocomplete="off"
+            />
+          </label>
+        </div>
+      </div>
+      <div class="wrap" id="carta-list">
+        {site.categories.map((category) => {
+          const items = site.products.filter((product) => product.categoryId === category.id);
+          const isExtra = category.id === extras?.id;
+          return (
+            items.length > 0 && (
+              <div class="cat-block" id={`cat-${category.slug}`} data-cat-block={category.slug}>
+                <div class="cat-head">
+                  <h3>{category.name}</h3>
+                  {category.note && <p>{category.note}</p>}
+                </div>
+                <div class={isExtra ? 'extras' : 'items'}>
+                  {items.map((product) => (
+                    <MenuItem product={product} extra={isExtra} />
+                  ))}
+                </div>
+              </div>
+            )
+          );
+        })}
+        <p class="empty" id="carta-empty" hidden>
+          Nada con esa búsqueda. Prueba con "costilla" o "tocineta".
+        </p>
+      </div>
+    </section>
+  )}
+
+  {on('promos') && (
+    <section class="section" id="promos">
+      <div class="wrap promos">
+        {site.blocks.promo.visible && (
+          <div class="promo-hero reveal">
+            {site.blocks.promo.image && <img src={site.blocks.promo.image} alt="" loading="lazy" />}
+            <div class="promo-hero-in">
+              {site.blocks.promo.tag && <span class="tag tag-gold">{site.blocks.promo.tag}</span>}
+              <h2 class="display h-lg">{site.blocks.promo.title}</h2>
+              <p>{site.blocks.promo.text}</p>
+              {site.blocks.promo.coupon ? (
+                <button class="btn btn-primary" type="button" data-apply-coupon={site.blocks.promo.coupon}>
+                  {site.blocks.promo.cta}
+                </button>
+              ) : (
+                <a class="btn btn-primary" href="#carta">
+                  {site.blocks.promo.cta}
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+        <div class="coupons reveal">
+          <p class="eyebrow">Cupones activos</p>
+          <div class="coupon-list">
+            {visibleCoupons.length === 0 && <p class="muted">Sin cupones por ahora.</p>}
+            {visibleCoupons.map((coupon) => (
+              <div class="coupon">
+                <h3>{coupon.title}</h3>
+                <p>
+                  {coupon.detail}
+                  {coupon.endsOn &&
+                    ` Vence el ${dateFmt.format(new Date(`${coupon.endsOn}T12:00:00-05:00`))}.`}
+                </p>
+                <div class="coupon-code">
+                  <code>{coupon.code}</code>
+                  <button class="btn btn-soft btn-sm" type="button" data-apply-coupon={coupon.code}>
+                    Usar cupón
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  )}
+
+  {on('eventos') && sectionEvents.length > 0 && (
+    <section class="section section-alt" id="eventos">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="eyebrow">Eventos y novedades</p>
+          <h2 class="display h-xl">
+            Lo que se
+            <br />
+            está cocinando
+          </h2>
+        </div>
+        <div class="events">
+          {sectionEvents.map((event) => (
+            <article class="event">
+              {event.image && <img src={event.image} alt="" loading="lazy" />}
+              <div class="event-in">
+                <span class="tag tag-gold">{event.kicker}</span>
+                <h3>{event.title}</h3>
+                <p>{event.body}</p>
+                <a class="btn btn-primary btn-sm" href={event.ctaHref}>
+                  {event.ctaLabel}
+                </a>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  {on('tour') && (
+    <section class="section" id="tour">
+      <div class="wrap tour">
+        <div class="tour-copy reveal">
+          <p class="eyebrow">{site.blocks.tour.kicker}</p>
+          <h2 class="display h-xl">{site.blocks.tour.title}</h2>
+          {site.blocks.tour.text && <p class="lead">{site.blocks.tour.text}</p>}
+          {site.blocks.tour.cards.length > 0 && (
+            <div class="tour-cards">
+              {site.blocks.tour.cards.map((card) => (
+                <article class="mini-card">
+                  <h3>{card.title}</h3>
+                  <p>{card.text}</p>
+                </article>
+              ))}
+            </div>
+          )}
+          <button class="btn btn-primary" type="button" id="open-quote">
+            Cotizar mi evento
+          </button>
+        </div>
+        {site.blocks.tour.image && (
+          <figure class="tour-img reveal">
+            <img src={site.blocks.tour.image} alt="" loading="lazy" />
+          </figure>
+        )}
+      </div>
+    </section>
+  )}
+
+  {on('resenas') && site.reviews.length > 0 && (
+    <section class="section section-alt" id="resenas">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="eyebrow">Prueba social</p>
+          <h2 class="display h-xl">
+            El rugido
+            <br />
+            de la manada
+          </h2>
+        </div>
+        <div class="reviews">
+          {site.reviews.map((review) => (
+            <article class="review">
+              <div class="stars" aria-label={`${review.stars} de 5`}>
+                {'★'.repeat(review.stars)}
+              </div>
+              <blockquote>“{review.body}”</blockquote>
+              <footer>
+                <span class="avatar">{review.author[0]}</span>
+                {review.author}
+              </footer>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  {on('cobertura') && (
+    <section class="section" id="cobertura">
+      <div class="wrap cover">
+        <div class="reveal">
+          <p class="eyebrow">Domicilios</p>
+          <h2 class="display h-xl">
+            ¿Llegamos
+            <br />a tu barrio?
+          </h2>
+          <p class="lead">
+            {site.store.open
+              ? site.store.pickup
+                ? 'Te lo llevamos o lo recoges en el local, sin costo de domicilio.'
+                : 'Te lo llevamos a domicilio o nos visitas en el local.'
+              : 'Por ahora somos solo domicilio. El punto físico viene en camino.'}
+          </p>
+          <p class="cover-meta">
+            <strong>{site.deliveryEta}</strong> de entrega promedio · pedido mínimo{' '}
+            <strong>{formatCop(site.deliveryMin)}</strong>
+          </p>
+        </div>
+        <div class="zones reveal">
+          {site.zones.map((zone) => (
+            <div class:list={['zone', { off: !zone.active }]}>
+              <b>{zone.name}</b>
+              <span>{zone.active ? `Domicilio ${formatCop(zone.fee)}` : 'Pronto'}</span>
+            </div>
+          ))}
+          {site.store.open ? (
+            <div class="zone store" data-testid="punto-fisico">
+              <b>📍 {site.store.address}</b>
+              <span>
+                {site.store.hours.map(([days, time]) => `${days} ${time}`).join(' · ') ||
+                  (site.store.pickup ? 'Recoge tu pedido aquí' : 'Visítanos')}
+              </span>
+              {site.store.mapsUrl && (
+                <a href={site.store.mapsUrl} target="_blank" rel="noopener noreferrer">
+                  Cómo llegar →
+                </a>
+              )}
+            </div>
+          ) : (
+            <div class="zone soon">
+              <b>📍 Punto físico</b>
+              <span>Próximamente</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <section class="final">
+    <div class="final-smoke" aria-hidden="true"></div>
+    <div class="wrap final-in reveal">
+      <h2 class="display h-xxl">
+        El barril
+        <br />
+        está encendido
+      </h2>
+      <div class="hero-actions">
+        <a class="btn btn-primary btn-lg" href="#carta">
+          Pedir ahora
+        </a>
+        {wa && (
+          <a class="btn btn-ghost btn-lg" href={wa} target="_blank" rel="noopener">
+            Escribir por WhatsApp
+          </a>
+        )}
+      </div>
+    </div>
+  </section>
+
+  {on('tour') && (
+    <div class="modal" id="quote" hidden role="dialog" aria-modal="true" aria-labelledby="q-title">
+      <div class="modal-card">
+        <header class="modal-head">
+          <h2 class="display h-md" id="q-title">
+            Cotiza tu evento
+          </h2>
+          <button class="round-btn" type="button" data-close-modal aria-label="Cerrar">
+            ✕
+          </button>
+        </header>
+        <form class="modal-body form-grid" id="quote-form" novalidate>
+          <div class="field">
+            <label for="q-tipo">
+              ¿Qué necesitas? <span class="req">*</span>
+            </label>
+            <select class="select" id="q-tipo" required>
+              <option value="">Elige</option>
+              <option>Catering al barril</option>
+              <option>Pedido corporativo</option>
+              <option>Otro</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="q-nombre">
+              Nombre <span class="req">*</span>
+            </label>
+            <input class="input" id="q-nombre" required autocomplete="name" />
+          </div>
+          <div class="field">
+            <label for="q-cel">
+              Celular <span class="req">*</span>
+            </label>
+            <input
+              class="input"
+              id="q-cel"
+              required
+              inputmode="numeric"
+              autocomplete="tel-national"
+              placeholder="300 123 4567"
+            />
+          </div>
+          <div class="field">
+            <label for="q-fecha">Fecha</label>
+            <input class="input" id="q-fecha" type="date" />
+          </div>
+          <div class="field">
+            <label for="q-personas">Personas</label>
+            <input class="input" id="q-personas" type="number" min="10" inputmode="numeric" />
+          </div>
+          <div class="field span-2">
+            <label for="q-msg">
+              Cuéntanos <span class="req">*</span>
+            </label>
+            <textarea class="textarea" id="q-msg" required></textarea>
+          </div>
+          <input class="hp" tabindex="-1" autocomplete="off" id="q-hp" aria-hidden="true" />
+          <label class="check span-2">
+            <input type="checkbox" id="q-ok" />
+            <span>
+              Autorizo a {site.restaurant.name} a tratar mis datos para responder esta solicitud, según la{' '}
+              <a href="/privacidad">política de tratamiento de datos</a>.
+            </span>
+          </label>
+          <p class="form-error span-2" id="q-error" hidden></p>
+          <button class="btn btn-primary btn-block span-2" type="submit">
+            Enviar solicitud
+          </button>
+        </form>
+      </div>
+    </div>
+  )}
+</Site>

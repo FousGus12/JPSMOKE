@@ -1,0 +1,32 @@
+---
+import Site from '../layouts/Site.astro';
+import { loadSiteData } from '../lib/content';
+
+const site = await loadSiteData();
+---
+
+<Site
+  site={site}
+  title={`Devoluciones · ${site.restaurant.name}`}
+  description="Qué hacer si tu pedido llegó mal."
+>
+  <article class="legal">
+    <p class="eyebrow">Garantía</p>
+    <h1 class="display">Devoluciones y reclamos</h1>
+    <p>
+      Si tu pedido llegó incompleto, equivocado o en mal estado, escríbenos dentro de las 2 horas siguientes a
+      la entrega con el código del pedido y una foto.
+    </p>
+    <ul>
+      <li>Producto faltante o equivocado: lo reponemos en el siguiente pedido o te devolvemos su valor.</li>
+      <li>Producto en mal estado: lo reponemos o devolvemos su valor.</li>
+      <li>
+        Los alimentos preparados no admiten devolución por cambio de opinión (Estatuto del Consumidor, Ley
+        1480 de 2011).
+      </li>
+    </ul>
+    <p>
+      Para radicar una petición, queja o reclamo usa la página de <a href="/pqrs">PQRS</a>.
+    </p>
+  </article>
+</Site>

@@ -1,0 +1,8 @@
+dist
+node_modules
+pnpm-lock.yaml
+mockup
+supabase/.temp
+.astro
+*.md
+src/lib/database.types.ts

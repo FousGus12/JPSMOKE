@@ -1,0 +1,246 @@
+/* JP Smoke · tokens y componentes base (mockup, compartido por sitio y panel) */
+
+@font-face { font-family: "Anton"; src: url("fonts/anton.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Anton"; src: url("fonts/anton-ext.woff2") format("woff2"); font-display: swap; unicode-range: U+0100-024F, U+1E00-1EFF; }
+@font-face { font-family: "Bebas Neue"; src: url("fonts/bebas.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Big Shoulders"; src: url("fonts/bigshoulders.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("fonts/inter.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("fonts/inter-ext.woff2") format("woff2"); font-weight: 100 900; font-display: swap; unicode-range: U+0100-024F, U+1E00-1EFF; }
+@font-face { font-family: "Space Grotesk"; src: url("fonts/spacegrotesk.woff2") format("woff2"); font-weight: 300 700; font-display: swap; }
+
+/* Dirección A · Brasa (recomendada): carbón, brasa naranja, hueso */
+:root,
+[data-direccion="brasa"] {
+  --bg: #0e0b09;
+  --surface: #1a1411;
+  --surface-2: #261d18;
+  --line: #3a2d25;
+  --text: #f5ece2;
+  --text-2: #c9b9a8;
+  --muted: #8f8073;
+  --accent: #ff5a1f;
+  --on-accent: #170904;
+  --accent-soft: #ffb38a;
+  --accent-2: #f3b23a;
+  --danger: #ff6b5b;
+  --ok: #7fd18b;
+  --font-display: "Anton", "Impact", sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --display-tracking: 0.02em;
+  --display-leading: 1;
+  --display-case: uppercase;
+  --grain: 0.06;
+}
+
+/* Dirección B · Vino (la de la guía de referencia) */
+[data-direccion="vino"] {
+  --bg: #260212;
+  --surface: #4f0423;
+  --surface-2: #5e0a2d;
+  --line: #000000;
+  --text: #ffffff;
+  --text-2: #ffc7c6;
+  --muted: #e19a9c;
+  --accent: #e10600;
+  --on-accent: #ffffff;
+  --accent-soft: #ffc7c6;
+  --accent-2: #ffc7c6;
+  --danger: #ff8a85;
+  --ok: #9be3a5;
+  --font-display: "Bebas Neue", "Impact", sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --display-tracking: 0.04em;
+  --display-leading: 0.96;
+  --grain: 0.04;
+}
+
+/* Dirección C · Mostaza: negro, mostaza, rojo salsa */
+[data-direccion="mostaza"] {
+  --bg: #111111;
+  --surface: #1d1d1b;
+  --surface-2: #282826;
+  --line: #3a3a36;
+  --text: #fafaf5;
+  --text-2: #d6d4c8;
+  --muted: #9a988d;
+  --accent: #f5b700;
+  --on-accent: #141100;
+  --accent-soft: #ffe08a;
+  --accent-2: #e2342a;
+  --danger: #ff6b5b;
+  --ok: #8fd694;
+  --font-display: "Big Shoulders", "Impact", sans-serif;
+  --font-body: "Space Grotesk", system-ui, sans-serif;
+  --display-tracking: 0.01em;
+  --display-leading: 0.98;
+  --grain: 0.05;
+}
+
+:root {
+  --r-pill: 15px;
+  --r-card: 14px;
+  --r-feature: 38px;
+  --ease: cubic-bezier(.2, .7, .2, 1);
+  --t1: 160ms; --t2: 240ms; --t3: 500ms; --t4: 900ms;
+  --max: 1280px;
+  --gutter: clamp(16px, 4vw, 40px);
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  transition: background var(--t3) var(--ease), color var(--t3) var(--ease);
+}
+img { display: block; max-width: 100%; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+[hidden] { display: none !important; }
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: var(--display-tracking);
+  line-height: var(--display-leading);
+  margin: 0;
+}
+.eyebrow {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.eyebrow::before, .eyebrow::after { content: "◂"; font-size: 10px; }
+.eyebrow::after { content: "▸"; }
+
+/* Botones */
+.btn {
+  --h: 46px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: var(--h);
+  padding: 0 20px;
+  border-radius: var(--r-pill);
+  border: 1.5px solid transparent;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  background: none;
+  transition: transform var(--t1) var(--ease), background var(--t2) var(--ease), color var(--t2) var(--ease), border-color var(--t2) var(--ease);
+  white-space: nowrap;
+}
+.btn:active { transform: scale(.97); }
+.btn-primary { background: var(--accent); color: var(--on-accent); }
+.btn-primary:hover { filter: brightness(1.08); }
+.btn-ghost { border-color: var(--text); color: var(--text); }
+.btn-ghost:hover { background: var(--text); color: var(--bg); }
+.btn-soft { background: var(--surface-2); color: var(--text); }
+.btn-soft:hover { background: var(--line); }
+.btn-sm { --h: 36px; padding: 0 14px; font-size: 12px; }
+.btn-lg { --h: 56px; padding: 0 28px; font-size: 15px; }
+.btn-block { width: 100%; }
+.btn[disabled] { opacity: .45; pointer-events: none; }
+.btn svg { width: 18px; height: 18px; flex: none; }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 38px; padding: 0 16px;
+  border-radius: var(--r-pill);
+  border: 1.5px solid var(--line);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+  cursor: pointer; white-space: nowrap;
+  transition: background var(--t2) var(--ease), color var(--t2) var(--ease), border-color var(--t2) var(--ease);
+}
+.pill[aria-pressed="true"], .pill.is-active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.pill .count { font-size: 11px; background: var(--surface-2); color: var(--text); border-radius: 99px; padding: 1px 7px; }
+.pill.is-active .count, .pill[aria-pressed="true"] .count { background: rgba(0,0,0,.18); color: inherit; }
+
+.tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 99px;
+  font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  background: var(--surface-2); color: var(--text-2);
+}
+.tag-accent { background: var(--accent); color: var(--on-accent); }
+.tag-gold { background: var(--accent-2); color: #160f00; }
+
+/* Formularios */
+.field { display: grid; gap: 6px; }
+.field label { font-size: 13px; font-weight: 600; color: var(--text-2); }
+.field .req { color: var(--accent); }
+.input, .select, .textarea {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  background: var(--bg);
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  outline: none;
+  transition: border-color var(--t2) var(--ease);
+}
+.textarea { min-height: 88px; resize: vertical; }
+.input:focus, .select:focus, .textarea:focus { border-color: var(--accent); }
+.input[aria-invalid="true"], .select[aria-invalid="true"] { border-color: var(--danger); }
+.field .error { font-size: 12px; color: var(--danger); min-height: 0; }
+.field .hint { font-size: 12px; color: var(--muted); }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--text-2); cursor: pointer; }
+.check input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; margin-top: 1px; }
+
+/* Interruptor */
+.switch { position: relative; display: inline-flex; width: 46px; height: 26px; flex: none; }
+.switch input { position: absolute; inset: 0; opacity: 0; cursor: pointer; margin: 0; z-index: 1; }
+.switch span { position: absolute; inset: 0; background: var(--line); border-radius: 99px; transition: background var(--t2) var(--ease); }
+.switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--text); transition: transform var(--t2) var(--ease); }
+.switch input:checked + span { background: var(--accent); }
+.switch input:checked + span::after { transform: translateX(20px); background: var(--on-accent); }
+.switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* Avisos */
+.toasts { position: fixed; z-index: 200; left: 50%; bottom: 88px; transform: translateX(-50%); display: grid; gap: 8px; width: min(420px, calc(100vw - 32px)); pointer-events: none; }
+.toast {
+  background: var(--text); color: var(--bg);
+  padding: 12px 16px; border-radius: 14px; font-size: 14px; font-weight: 600;
+  animation: toast-in var(--t3) var(--ease);
+}
+@keyframes toast-in { from { opacity: 0; transform: translateY(12px); } }
+
+/* Logo */
+.logo { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
+.logo svg { width: 34px; height: 34px; flex: none; }
+.logo b { font-family: var(--font-display); font-weight: 800; font-size: 26px; letter-spacing: .03em; line-height: 1; text-transform: uppercase; }
+.logo b i { font-style: normal; color: var(--accent); }
+
+/* Selector de dirección (solo mockup) */
+.direccion {
+  position: fixed; z-index: 150; left: 12px; bottom: 12px;
+  display: flex; gap: 4px; align-items: center;
+  padding: 5px; border-radius: 99px;
+  background: rgba(0,0,0,.72); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,.12);
+  font-size: 11px; color: #fff;
+}
+.direccion span { padding: 0 6px 0 8px; opacity: .7; letter-spacing: .08em; text-transform: uppercase; }
+.direccion button { border: 0; background: transparent; color: #fff; padding: 6px 10px; border-radius: 99px; cursor: pointer; font-weight: 600; font-size: 12px; }
+.direccion button[aria-pressed="true"] { background: #fff; color: #000; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; scroll-behavior: auto !important; }
+}

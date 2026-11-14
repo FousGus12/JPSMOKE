@@ -1,0 +1,32 @@
+---
+interface Props {
+  name: string;
+}
+const [first, ...rest] = Astro.props.name.split(' ');
+---
+
+<span class="logo-mark" aria-hidden="true">
+  <svg viewBox="0 0 40 40">
+    <rect
+      x="7"
+      y="9"
+      width="26"
+      height="26"
+      rx="6"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.4"
+    ></rect>
+    <path d="M7 17h26M7 27h26" stroke="currentColor" stroke-width="2.4"></path>
+    <path
+      d="M15 7c0-3 3-3 3-6M21 7c0-3 3-3 3-6"
+      fill="none"
+      stroke="var(--accent)"
+      stroke-width="2.4"
+      stroke-linecap="round"
+    ></path>
+  </svg>
+</span>
+<b>
+  {first} <i>{rest.join(' ')}</i>
+</b>

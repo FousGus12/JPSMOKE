@@ -1,0 +1,31 @@
+---
+import Price from './Price.astro';
+import type { Product } from '../../lib/content';
+
+interface Props {
+  product: Product;
+}
+const { product } = Astro.props;
+---
+
+<article class:list={['pcard', { 'sold-out': !product.available }]} data-product={product.id}>
+  <div class="pcard-img">
+    {product.image && <img src={product.image} alt={product.name} loading="lazy" width="380" height="380" />}
+    {product.badge && <span class="tag tag-accent">{product.badge}</span>}
+  </div>
+  <div class="pcard-body">
+    <h3>{product.name}</h3>
+    <p>{product.description}</p>
+  </div>
+  <div class="pcard-foot">
+    <Price product={product} />
+    <button
+      class="btn btn-primary btn-block"
+      type="button"
+      data-add={product.id}
+      disabled={!product.available}
+    >
+      {product.available ? '＋ Agregar al pedido' : 'Agotado hoy'}
+    </button>
+  </div>
+</article>

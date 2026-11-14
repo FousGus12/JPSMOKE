@@ -1,0 +1,59 @@
+# Respaldo diario de la base remota de JP Smoke (§7). Vuelca esquema y datos, los cifra (AES-256,
+# frase en el secreto BACKUP_PASSPHRASE, copia en el Llavero como jp-smoke-backup-passphrase) y los
+# guarda 30 días como artefacto privado del repo. Nunca sube nada sin cifrar.
+# Se activa cuando existan los secretos JPS_DB_URL y BACKUP_PASSPHRASE; hasta entonces avisa y sale.
+name: Respaldo diario
+
+on:
+  schedule:
+    - cron: '30 6 * * *' # 1:30 a. m. Bogotá
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  respaldo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      JPS_DB_URL: ${{ secrets.JPS_DB_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    steps:
+      - name: ¿Hay secretos?
+        id: listo
+        run: |
+          if [ -z "$JPS_DB_URL" ] || [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::warning::Respaldo sin configurar: faltan JPS_DB_URL o BACKUP_PASSPHRASE."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Cliente de Postgres 17
+        if: steps.listo.outputs.ok == 'true'
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17 >/dev/null
+      - name: Volcar y cifrar
+        if: steps.listo.outputs.ok == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          PGD=/usr/lib/postgresql/17/bin/pg_dump
+          $PGD -d "$JPS_DB_URL" --schema-only --schema=public --no-owner --no-privileges -f out/esquema.sql
+          # Con --table, pg_dump ignora --schema: cuentas y archivos en un volcado, public en otro.
+          $PGD -d "$JPS_DB_URL" --data-only --table=auth.users --table=auth.identities --table=storage.objects \
+            --column-inserts --no-owner --no-privileges -f out/datos.sql
+          $PGD -d "$JPS_DB_URL" --data-only --schema=public --column-inserts --no-owner --no-privileges >> out/datos.sql
+          grep -q 'INSERT INTO public.services' out/datos.sql
+          tar -czf - -C out . | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:BACKUP_PASSPHRASE -out respaldo.tgz.enc
+          rm -rf out
+      - uses: actions/upload-artifact@v4
+        if: steps.listo.outputs.ok == 'true'
+        with:
+          name: respaldo-${{ github.run_id }}
+          path: respaldo.tgz.enc
+          retention-days: 30
+          if-no-files-found: error

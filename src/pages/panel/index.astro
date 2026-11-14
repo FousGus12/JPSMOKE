@@ -1,0 +1,10 @@
+---
+// Panel del negocio (F5): React solo en el cliente, sin indexar. La autorización real es RLS + aal2 (D12).
+import Base from '../../layouts/Base.astro';
+import { PanelApp } from '../../panel/PanelApp';
+import '../../styles/panel.css';
+---
+
+<Base title="Panel del negocio" description="Acceso privado del equipo." noindex>
+  <PanelApp client:only="react" />
+</Base>

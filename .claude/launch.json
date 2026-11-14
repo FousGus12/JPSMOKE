@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "jp-smoke-mockup",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "5320", "--bind", "127.0.0.1", "--directory", "mockup"],
+      "port": 5320
+    },
+    {
+      "name": "jp-smoke-sitio",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["exec", "astro", "preview", "--host", "127.0.0.1", "--port", "4331"],
+      "port": 4331
+    }
+  ]
+}

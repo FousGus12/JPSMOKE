@@ -1,0 +1,12 @@
+/* Tailwind sin preflight: el sitio usa los estilos del mockup aprobado (sitio.css); Tailwind solo aporta utilidades. */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@import './tokens.css';
+@import './sitio.css';
+
+@theme {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-accent: var(--accent);
+}

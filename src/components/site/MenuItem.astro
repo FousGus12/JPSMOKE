@@ -1,0 +1,55 @@
+---
+import { formatCop } from '../../core/money';
+import type { Product } from '../../lib/content';
+
+interface Props {
+  product: Product;
+  extra?: boolean;
+}
+const { product, extra = false } = Astro.props;
+const search = `${product.name} ${product.description}`.toLowerCase();
+---
+
+{extra ? (
+  <div class="extra" data-product={product.id} data-search={search}>
+    <span>
+      {product.name}
+      {product.description && <small>{product.description}</small>}
+    </span>
+    <button class="add" type="button" data-add={product.id} disabled={!product.available}>
+      ＋ <b>{formatCop(product.price)}</b>
+    </button>
+  </div>
+) : (
+  <article
+    class:list={['item', { 'sold-out': !product.available }]}
+    data-product={product.id}
+    data-search={search}
+  >
+    <div class="item-img">
+      {product.image && <img src={product.image} alt="" loading="lazy" width="112" height="112" />}
+    </div>
+    <div class="item-body">
+      <h4>{product.name}</h4>
+      <p>{product.description}</p>
+      <div class="item-actions">
+        {!product.available ? (
+          <span class="badge-out">Agotado hoy</span>
+        ) : product.comboPrice !== null ? (
+          <>
+            <button class="add" type="button" data-add={product.id} data-combo="0">
+              ＋ Sola <b>{formatCop(product.price)}</b>
+            </button>
+            <button class="add primary" type="button" data-add={product.id} data-combo="1">
+              ＋ Combo <b>{formatCop(product.comboPrice)}</b>
+            </button>
+          </>
+        ) : (
+          <button class="add primary" type="button" data-add={product.id}>
+            ＋ Agregar <b>{formatCop(product.price)}</b>
+          </button>
+        )}
+      </div>
+    </div>
+  </article>
+)}

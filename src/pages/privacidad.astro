@@ -1,0 +1,52 @@
+---
+import Site from '../layouts/Site.astro';
+import { loadSiteData } from '../lib/content';
+
+const site = await loadSiteData();
+const name = site.restaurant.name;
+---
+
+<Site
+  site={site}
+  title={`Tratamiento de datos · ${name}`}
+  description={`Política de tratamiento de datos personales de ${name}.`}
+>
+  <article class="legal">
+    <p class="eyebrow">Ley 1581 de 2012 · Decreto 1377 de 2013</p>
+    <h1 class="display">Tratamiento de datos personales</h1>
+    <p class="note">
+      Responsable: <b>{name}</b> (razón social y NIT pendientes de formalizar). Bogotá D.C., Colombia. Canal:
+      WhatsApp del negocio o PQRS en este sitio.
+    </p>
+    <h2>Qué datos tratamos</h2>
+    <ul>
+      <li>Para entregar tu pedido: nombre, celular, dirección, barrio, localidad e indicaciones.</li>
+      <li>Si lo autorizas aparte: celular para enviarte promociones y cupones.</li>
+      <li>
+        Datos técnicos mínimos para evitar pedidos falsos (dirección IP cifrada y verificación anti-robots).
+      </li>
+    </ul>
+    <h2>Para qué</h2>
+    <ul>
+      <li>Recibir, preparar, entregar y hacer seguimiento a tu pedido.</li>
+      <li>Atender PQRS y reclamos.</li>
+      <li>Enviarte promociones solo si lo autorizaste (puedes retirarlo cuando quieras).</li>
+      <li>Prevenir fraude: pedidos repetidos, de broma o automáticos.</li>
+    </ul>
+    <h2>Tus derechos</h2>
+    <p>
+      Conocer, actualizar, rectificar y suprimir tus datos, revocar la autorización y presentar quejas ante la
+      Superintendencia de Industria y Comercio. Consultas: respuesta en máximo 10 días hábiles. Reclamos: 15
+      días hábiles.
+    </p>
+    <h2>Con quién se comparten</h2>
+    <p>
+      Solo con proveedores tecnológicos que alojan el sitio y la base de datos (Supabase, Vercel) y con
+      Cloudflare para la verificación anti-robots. Pueden estar fuera de Colombia (transferencia
+      internacional) y aplican medidas de seguridad. No vendemos tus datos.
+    </p>
+    <h2>Cuánto tiempo</h2>
+    <p>Mientras tengas pedidos con nosotros y hasta 24 meses después del último; luego se anonimizan.</p>
+    <p class="muted">Versión v1-2026-11.</p>
+  </article>
+</Site>

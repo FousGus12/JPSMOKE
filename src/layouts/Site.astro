@@ -1,0 +1,307 @@
+---
+// Marco del sitio público: encabezado, menú móvil, pie, accesos rápidos, carrito, pedido y seguimiento.
+// Copiado del mockup aprobado (mockup/index.html), sin atributos style (CSP).
+import Base from './Base.astro';
+import Logo from '../components/Logo.astro';
+import type { SiteData } from '../lib/content';
+import { clientData } from '../lib/content';
+
+interface Props {
+  site: SiteData;
+  title: string;
+  description: string;
+  noindex?: boolean;
+  jsonLd?: unknown[];
+}
+const { site, title, description, noindex = false, jsonLd = [] } = Astro.props;
+const home = Astro.url.pathname === '/' ? '' : '/';
+const wa = site.whatsapp
+  ? `https://wa.me/${site.whatsapp}?text=${encodeURIComponent(`¡Hola ${site.restaurant.name}! Quiero hacer un pedido 🔥`)}`
+  : null;
+const data = JSON.stringify(clientData(site)).replace(/</g, '\\u003c');
+const year = new Date().getFullYear();
+---
+
+<Base title={title} description={description} noindex={noindex} jsonLd={jsonLd}>
+  <a class="skip" href="#contenido">
+    Saltar al contenido
+  </a>
+
+  <header class="header" id="header">
+    <div class="header-in">
+      <a class="logo" href={`${home}#inicio`} aria-label={`${site.restaurant.name}, inicio`}>
+        <Logo name={site.restaurant.name} />
+      </a>
+      <nav class="nav" aria-label="Principal">
+        <a href={`${home}#arsenal`}>Destacados</a>
+        <a href={`${home}#carta`}>Carta</a>
+        <a href={`${home}#promos`}>Promos</a>
+        <a href={`${home}#eventos`}>Eventos</a>
+        <a href={`${home}#cobertura`}>Domicilios</a>
+        <a href="#" data-open-track>
+          Seguir pedido
+        </a>
+      </nav>
+      <div class="header-actions">
+        {site.channels.rappi.visible && (
+          <a class="chip-channel" href={site.channels.rappi.url} target="_blank" rel="noopener">
+            Rappi
+          </a>
+        )}
+        {site.channels.didi.visible && (
+          <a class="chip-channel" href={site.channels.didi.url} target="_blank" rel="noopener">
+            DiDi Food
+          </a>
+        )}
+        <button class="cart-btn" type="button" data-open-cart aria-label="Ver mi pedido">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M5 7h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8L5 7Z"></path>
+            <path d="M9 7a3 3 0 0 1 6 0"></path>
+          </svg>
+          <span class="cart-count" data-cart-count>
+            0
+          </span>
+        </button>
+        <a class="btn btn-primary btn-sm header-cta" href={`${home}#carta`}>
+          Pedir
+        </a>
+        <button
+          class="menu-btn"
+          type="button"
+          id="menu-btn"
+          aria-label="Abrir menú"
+          aria-expanded="false"
+          aria-controls="drawer"
+        >
+          <span></span>
+          <span></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="drawer" id="drawer" hidden>
+    <nav aria-label="Menú móvil">
+      <a href={`${home}#arsenal`}>Destacados</a>
+      <a href={`${home}#carta`}>Carta completa</a>
+      <a href={`${home}#promos`}>Promociones</a>
+      <a href={`${home}#eventos`}>Eventos</a>
+      <a href={`${home}#tour`}>JP on Tour</a>
+      <a href={`${home}#cobertura`}>Domicilios</a>
+      <a href="#" data-open-track>
+        Seguir mi pedido
+      </a>
+    </nav>
+    <div class="drawer-foot">
+      <a class="btn btn-primary btn-block" href={`${home}#carta`}>
+        Pedir ahora
+      </a>
+      {wa && (
+        <a class="btn btn-ghost btn-block" href={wa} target="_blank" rel="noopener">
+          Escribir por WhatsApp
+        </a>
+      )}
+      {site.channels.rappi.visible && (
+        <a class="btn btn-soft btn-block" href={site.channels.rappi.url} target="_blank" rel="noopener">
+          Pedir en Rappi
+        </a>
+      )}
+      {site.channels.didi.visible && (
+        <a class="btn btn-soft btn-block" href={site.channels.didi.url} target="_blank" rel="noopener">
+          Pedir en DiDi Food
+        </a>
+      )}
+    </div>
+  </div>
+
+  <slot name="before" />
+  <main id="contenido">
+    <slot />
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-grid">
+      <div>
+        <a class="logo" href={`${home}#inicio`}>
+          <Logo name={site.restaurant.name} />
+        </a>
+        <p class="muted">Hamburguesas al barril · Bogotá, Colombia</p>
+        <div class="socials">
+          {wa && (
+            <a href={wa} target="_blank" rel="noopener">
+              WhatsApp
+            </a>
+          )}
+          {site.instagram && (
+            <a
+              href={`https://www.instagram.com/${site.instagram.replace('@', '')}`}
+              target="_blank"
+              rel="noopener"
+            >
+              Instagram
+            </a>
+          )}
+          {site.tiktok && (
+            <a href={`https://www.tiktok.com/${site.tiktok}`} target="_blank" rel="noopener">
+              TikTok
+            </a>
+          )}
+        </div>
+      </div>
+      <div>
+        <h3>Horario de pedidos</h3>
+        <dl class="hours">
+          {site.hours.map(([day, time]) => (
+            <div>
+              <dt>{day}</dt>
+              <dd>{time}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+      <div>
+        <h3>Navega</h3>
+        <ul class="links">
+          <li>
+            <a href="#" data-open-track>
+              Seguir mi pedido
+            </a>
+          </li>
+          <li>
+            <a href={`${home}#carta`}>Carta</a>
+          </li>
+          <li>
+            <a href={`${home}#promos`}>Promociones</a>
+          </li>
+          <li>
+            <a href={`${home}#tour`}>Eventos privados</a>
+          </li>
+          <li>
+            <a href="/pqrs">PQRS</a>
+          </li>
+        </ul>
+      </div>
+      <div>
+        <h3>Legal</h3>
+        <ul class="links">
+          <li>
+            <a href="/terminos">Términos y condiciones</a>
+          </li>
+          <li>
+            <a href="/privacidad">Tratamiento de datos</a>
+          </li>
+          <li>
+            <a href="/devoluciones">Devoluciones</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+    <div class="wrap footer-bottom">
+      <span>
+        © {year} {site.restaurant.name} — Bogotá D.C.
+      </span>
+      <span>Hecho por CLOUP.CO</span>
+    </div>
+  </footer>
+
+  <nav class="bottom-bar" aria-label="Accesos rápidos">
+    <a href={`${home}#carta`}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path d="M4 6h16M4 12h16M4 18h10"></path>
+      </svg>
+      Carta
+    </a>
+    <button type="button" data-open-cart>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path d="M5 7h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8L5 7Z"></path>
+        <path d="M9 7a3 3 0 0 1 6 0"></path>
+      </svg>
+      Mi pedido <b data-cart-count>0</b>
+    </button>
+    {wa && (
+      <a href={wa} target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Z" />
+        </svg>
+        WhatsApp
+      </a>
+    )}
+  </nav>
+  {wa && (
+    <a class="wa-float" href={wa} target="_blank" rel="noopener" aria-label="Escribir por WhatsApp">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.5 14.2c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 2c.1.2.1.4 0 .5l-.4.6-.4.4c-.1.2-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.4 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.6-.1l1.9.9c.3.1.5.2.5.3.1.2.1.7-.2 1.4Z" />
+      </svg>
+    </a>
+  )}
+
+  <a class="tracker" id="tracker" href="/pedido" hidden></a>
+
+  <div class="sheet-backdrop" id="cart-backdrop" hidden></div>
+  <aside class="sheet" id="cart" hidden aria-label="Mi pedido" role="dialog" aria-modal="true">
+    <header class="sheet-head">
+      <div>
+        <p class="eyebrow">Tu pedido</p>
+        <h2 class="display h-md">Lo que vas a morder</h2>
+      </div>
+      <button class="round-btn" type="button" data-close-cart aria-label="Cerrar">
+        ✕
+      </button>
+    </header>
+    <div class="sheet-body" id="cart-body"></div>
+    <footer class="sheet-foot" id="cart-foot"></footer>
+  </aside>
+
+  <div class="modal" id="checkout" hidden role="dialog" aria-modal="true" aria-labelledby="co-title">
+    <div class="modal-card">
+      <header class="modal-head">
+        <ol class="steps" id="co-steps">
+          <li class="is-on">Datos</li>
+          <li>Confirmar</li>
+        </ol>
+        <button class="round-btn" type="button" data-close-modal aria-label="Cerrar">
+          ✕
+        </button>
+      </header>
+      <div class="modal-body" id="co-body"></div>
+    </div>
+  </div>
+
+  <div class="modal" id="track" hidden role="dialog" aria-modal="true" aria-labelledby="t-title">
+    <div class="modal-card">
+      <header class="modal-head">
+        <h2 class="display h-md" id="t-title">
+          Seguir mi pedido
+        </h2>
+        <button class="round-btn" type="button" data-close-modal aria-label="Cerrar">
+          ✕
+        </button>
+      </header>
+      <div class="modal-body track-modal">
+        <div id="track-recent" class="track-recent"></div>
+        <form class="form-grid" id="track-form" novalidate>
+          <div class="field">
+            <label for="t-code">Código del pedido</label>
+            <input class="input upper" id="t-code" placeholder="JP-0042" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="t-last">Últimos 4 dígitos del celular</label>
+            <input class="input" id="t-last" inputmode="numeric" maxlength="4" placeholder="1234" />
+          </div>
+          <p class="form-error span-2" id="track-error" hidden>
+            No encontramos un pedido con esos datos. Revisa el código que te salió al confirmar.
+          </p>
+          <button class="btn btn-primary btn-block span-2" type="submit">
+            Ver mi pedido
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <script type="application/json" id="jp-data" set:html={data} />
+  <script>
+    import '../scripts/sitio';
+  </script>
+</Base>

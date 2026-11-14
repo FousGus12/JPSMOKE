@@ -1,0 +1,43 @@
+---
+import '../styles/global.css';
+import { serializeJsonLd } from '../core/jsonld';
+
+interface Props {
+  title: string;
+  description: string;
+  /** Páginas privadas o de error: nunca se indexan. */
+  noindex?: boolean;
+  jsonLd?: unknown[];
+}
+const { title, description, noindex = false, jsonLd = [] } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+// Nada se indexa hasta el lanzamiento (F10).
+const indexable = !noindex && import.meta.env.SITE_INDEXABLE === 'true';
+---
+
+<!doctype html>
+<html lang="es-CO">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="robots" content={indexable ? 'index, follow' : 'noindex, nofollow'} />
+    {!noindex && <link rel="canonical" href={canonical} />}
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="es_CO" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/fonts/bebas.woff2" as="font" type="font/woff2" crossorigin />
+    <meta property="og:image" content={new URL('/og.jpg', Astro.site)} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#260212" />
+    {jsonLd.map((item) => (
+      <script type="application/ld+json" set:html={serializeJsonLd(item)} />
+    ))}
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

@@ -1,0 +1,27 @@
+/* JP Smoke · seguimiento del pedido (mockup) */
+.track-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px var(--gutter); max-width: 760px; margin: 0 auto; }
+.track { max-width: 760px; margin: 0 auto; padding: 8px var(--gutter) 64px; display: grid; gap: 18px; }
+.track-hero { display: grid; gap: 10px; padding: clamp(22px, 5vw, 36px); border-radius: var(--r-feature); background: var(--surface); border: 1px solid var(--line); }
+.track-hero .code { font-family: var(--font-display); font-size: 20px; letter-spacing: .06em; color: var(--text-2); margin: 0; }
+.track-status { font-size: clamp(52px, 12vw, 104px); color: var(--accent); }
+.track-hero p { margin: 0; color: var(--text-2); }
+.steps-v { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.steps-v li { position: relative; display: grid; grid-template-columns: 28px 1fr auto; gap: 14px; align-items: start; padding-bottom: 22px; color: var(--muted); }
+.steps-v li:last-child { padding-bottom: 0; }
+.steps-v li::before { content: ""; width: 18px; height: 18px; margin: 2px 0 0 5px; border-radius: 50%; border: 2px solid var(--line); background: var(--bg); z-index: 1; }
+.steps-v li::after { content: ""; position: absolute; left: 13px; top: 22px; bottom: 0; width: 2px; background: var(--line); }
+.steps-v li:last-child::after { content: none; }
+.steps-v li.is-done { color: var(--text); }
+.steps-v li.is-done::before { background: var(--accent); border-color: var(--accent); }
+.steps-v li.is-done::after { background: var(--accent); }
+.steps-v li.now::before { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 30%, transparent); }
+.steps-v b { display: block; font-size: 16px; }
+.steps-v small { font-size: 13px; }
+.steps-v time { font-size: 13px; font-variant-numeric: tabular-nums; }
+.track-card { padding: 20px; border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--line); display: grid; gap: 10px; }
+.track-card h2 { margin: 0; font-size: 14px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.track-lines { display: grid; gap: 6px; font-size: 15px; }
+.track-lines div { display: flex; justify-content: space-between; gap: 12px; }
+.track-lines .tot { font-weight: 800; font-size: 18px; border-top: 1px solid var(--line); padding-top: 8px; }
+.track-note { font-size: 13px; color: var(--muted); text-align: center; }
+.cancelled .track-status { color: var(--danger); }

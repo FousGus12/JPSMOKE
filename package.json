@@ -1,0 +1,59 @@
+{
+  "name": "jp-smoke",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "JP Smoke · micro app de pedidos para restaurantes: sitio, seguimiento y panel",
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": ">=22.23.4"
+  },
+  "scripts": {
+    "dev": "astro dev --port 4331",
+    "build": "astro check && astro build",
+    "preview": "astro preview --port 4331",
+    "typecheck": "astro check",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:rls": "supabase test db",
+    "e2e": "playwright test --project=escritorio --workers=1",
+    "e2e:all": "playwright test --workers=1",
+    "verify": "scripts/verify.sh",
+    "verify:full": "scripts/verify.sh full",
+    "verify:release": "scripts/verify.sh release",
+    "db:local": "scripts/db-local.sh"
+  },
+  "dependencies": {
+    "@astrojs/react": "7.1.1",
+    "@supabase/supabase-js": "2.118.0",
+    "@tanstack/react-query": "5.104.5",
+    "astro": "7.4.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "sharp": "0.35.5",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.12",
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.1",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/node": "26.6.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "eslint": "10.13.0",
+    "eslint-plugin-astro": "3.2.1",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.13.0",
+    "prettier": "3.9.10",
+    "prettier-plugin-astro": "1.1.2",
+    "tailwindcss": "4.3.3",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  }
+}

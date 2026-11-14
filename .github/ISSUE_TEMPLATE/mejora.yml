@@ -1,0 +1,24 @@
+name: Mejora
+description: Una idea o un cambio para JP Smoke
+labels: [mejora]
+body:
+  - type: textarea
+    id: problema
+    attributes:
+      label: Qué problema resuelve
+    validations:
+      required: true
+  - type: textarea
+    id: propuesta
+    attributes:
+      label: Propuesta
+  - type: textarea
+    id: terminado
+    attributes:
+      label: Cómo sabemos que está terminado
+  - type: checkboxes
+    id: datos
+    attributes:
+      label: Datos
+      options:
+        - label: Toca datos de clientes o los envía a otro servicio
