@@ -1,6 +1,6 @@
 # HANDOFF · JP Smoke
 
-> **Última actualización:** 2026-11-02 (auditoría con la skill de Cloudflare y correcciones; ambiente del vino más suave) · **Roadmap:** v0.13 · **Git:** `main` local, sin commits ni remoto (D25)
+> **Última actualización:** 2026-11-14 (montaje en curso, D36) · **Roadmap:** v0.14 · **Git:** rama `montaje` en GitHub, PR #1 abierto
 >
 > **Para retomar en otro chat** (copiar tal cual):
 >
@@ -9,7 +9,7 @@
 > 1. Lee HANDOFF.md y CLAUDE.md (del ROADMAP.md solo §12 fases, §14 decisiones y §16 pendientes).
 > 2. Levanta lo local: `colima start` si Docker no responde; `supabase start -x imgproxy,vector,logflare,supavisor`; `pnpm db:local`.
 > 3. Corre `scripts/verify.sh` y resúmeme en 3 líneas dónde estamos y qué sigue.
-> Sigue ~/Developer/_manual/MANUAL-PROYECTOS.md (y aliméntalo). Todo es local hasta que yo diga (D25): no crees GitHub, Supabase ni Vercel.
+> Sigue ~/Developer/_manual/MANUAL-PROYECTOS.md (y aliméntalo). Montaje aprobado (D36): sigue docs/montaje.md desde donde dice HANDOFF §3.
 > Al cerrar cada bloque actualiza HANDOFF.md y ROADMAP.md.
 > Lo que necesito ahora es:
 > [pedido]
@@ -45,8 +45,10 @@ Micro app de pedidos para restaurantes, empezando por **JP Smoke** (hamburguesas
 
 | Pieza | Estado |
 |---|---|
-| Git | `git init` local, **sin commits** (Gustavo no ha pedido commit) |
-| GitHub / Supabase / Vercel | **No creados** (D25: sin cupo gratis; todo local hasta que Gustavo diga). Vercel comercial = Pro (D4) |
+| Git | Repo **público** https://github.com/FousGus12/JPSMOKE (decisión de Gustavo). Rama `montaje` → PR #1. Autor de commits: noreply de GitHub de FousGus12 |
+| Supabase | Proyecto `vxtbjknqadmehgulejtl` (org FousGus1218, us-east-1, plan gratis), **vacío**. Integración GitHub conectada con "Deploy to production" apagado. La CLI de este Mac está en otra org (FousGus): hace falta el token de la cuenta FousGus1218 en el Llavero. Llavero ya tiene `jp-smoke-project-ref` y `jp-smoke-pooler-host` (`aws-1-us-east-1.pooler.supabase.com`); faltan `jp-smoke-db-password` y `jp-smoke-supabase-token` |
+| Vercel | Proyecto `bejaranomanuel1409-1827/jpsmoke` (Hobby), conectado al repo. Dominio `jpsmoke.vercel.app`; rama de producción hoy `main` (montaje dice `produccion`: cambiar). Variables cargadas (Production y Preview): `PUBLIC_SUPABASE_URL`, `PUBLIC_RESTAURANT_SLUG`, `SITE_URL=https://jpsmoke.vercel.app`, `SITE_INDEXABLE=false`. Faltan `PUBLIC_SUPABASE_ANON_KEY` y `PUBLIC_TURNSTILE_SITE_KEY`. El build falla hasta que la base remota tenga migraciones y datos (el sitio prerenderiza desde Supabase) |
+| CI | El build se movió al job e2e (necesita base local). App, Base, Datos y Deno en verde |
 | Supabase local | Puertos **573xx** (API 57321, DB 57322, Studio 57323). Proyecto `jp-smoke` |
 | Docker | Colima (`colima start`, 4 GB). Copias locales de **Aura y Tareas apagadas** con `docker stop` + `--restart=no` (datos intactos; Aura: `docker start $(docker ps -aq --filter name=_aura)`). GMDevz local sigue encendido |
 | Secretos | Ninguno real. Al publicar: Llavero cuenta `jp-smoke` (`jp-smoke-project-ref`, `jp-smoke-db-password`, `jp-smoke-pooler-host`, `jp-smoke-supabase-token`); secretos de funciones `TURNSTILE_SECRET`, `IP_SALT`, `CORS_ALLOWED_ORIGINS`, `VERCEL_DEPLOY_HOOKS` (`{"jp-smoke":"https://…"}`), `WHATSAPP_CRON_SECRET` (igual al de Vault `jps_whatsapp_secret`), y para envíos reales `WHATSAPP_TOKEN` y `WHATSAPP_PHONE_ID`. En Vault: `jps_whatsapp_url` y `jps_whatsapp_secret` |
