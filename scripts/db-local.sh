@@ -25,3 +25,4 @@ supabase gen types typescript --local 2>/dev/null > src/lib/database.types.ts
 echo "Base local lista: $(psql "$DB" -Atc 'select count(*) from supabase_migrations.schema_migrations') migraciones, $(psql "$DB" -Atc 'select count(*) from public.staff') cuentas dev, tipos generados."
 # Los builds locales (verify:full, e2e) leen la base local.
 cp .env.local .env.production.local
+printf "PUBLIC_TURNSTILE_SITE_KEY=\n" >> .env.production.local

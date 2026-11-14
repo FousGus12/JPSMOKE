@@ -108,7 +108,7 @@ jobs:
         run: |
           psql postgresql://postgres:postgres@127.0.0.1:57322/postgres -q -f supabase/dev-users.sql
           ANON=$(supabase status -o json | python3 -c 'import json,sys; print(json.load(sys.stdin)["ANON_KEY"])')
-          printf 'PUBLIC_SUPABASE_URL=http://127.0.0.1:57321\nPUBLIC_SUPABASE_ANON_KEY=%s\nPUBLIC_RESTAURANT_SLUG=jp-smoke\nSITE_URL=https://jp-smoke.vercel.app\n' "$ANON" > .env.production.local
+          printf 'PUBLIC_SUPABASE_URL=http://127.0.0.1:57321\nPUBLIC_SUPABASE_ANON_KEY=%s\nPUBLIC_RESTAURANT_SLUG=jp-smoke\nSITE_URL=https://jp-smoke.vercel.app\nPUBLIC_TURNSTILE_SITE_KEY=\n' "$ANON" > .env.production.local
       - run: pnpm exec playwright install --with-deps chromium webkit
       - run: pnpm exec astro build
       - run: node scripts/revisar-build.mjs
