@@ -436,6 +436,10 @@ verify_jwt = false
 [functions.publicar]
 verify_jwt = true
 
+# Equipo (D38): exige sesión; la base valida admin con dos pasos y su restaurante.
+[functions.equipo]
+verify_jwt = true
+
 # Captación con el aviso de bienvenida (D16): pública con Turnstile y límites.
 [functions.captar]
 verify_jwt = false

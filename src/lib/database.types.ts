@@ -479,14 +479,14 @@ isOneToOne: false
                   ]
                 },"staff": {
                   Row: {
-                    "active": boolean,"created_at": string,"full_name": string,"restaurant_id": string,"role": Database["public"]['Enums']["staff_role"],"user_id": string
+                    "active": boolean,"created_at": string,"full_name": string,"permissions": (string)[],"restaurant_id": string,"role": Database["public"]['Enums']["staff_role"],"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "active"?: boolean,"created_at"?: string,"full_name": string,"restaurant_id": string,"role"?: Database["public"]['Enums']["staff_role"],"user_id": string
+                    "active"?: boolean,"created_at"?: string,"full_name": string,"permissions"?: (string)[],"restaurant_id": string,"role"?: Database["public"]['Enums']["staff_role"],"user_id": string
                   }
                   Update: {
-                    "active"?: boolean,"created_at"?: string,"full_name"?: string,"restaurant_id"?: string,"role"?: Database["public"]['Enums']["staff_role"],"user_id"?: string
+                    "active"?: boolean,"created_at"?: string,"full_name"?: string,"permissions"?: (string)[],"restaurant_id"?: string,"role"?: Database["public"]['Enums']["staff_role"],"user_id"?: string
                   }
                   Relationships: [
                     {
@@ -584,6 +584,12 @@ isOneToOne: false
             "board_summary":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
+"can":
+{ Args: { "area": string }; Returns: boolean
+                           },
+"can_of":
+{ Args: { "area": string,"rid": string }; Returns: boolean
+                           },
 "capture_lead":
 { Args: { "p_consent_version": string,"p_event": string,"p_name": string,"p_phone": string,"p_restaurant": string }; Returns: Json
                            },
@@ -648,6 +654,9 @@ isOneToOne: false
                            },
 "submit_quote":
 { Args: { "p": Json }; Returns: Json
+                           },
+"team_list":
+{ Args: Record<PropertyKey, never>; Returns: Json
                            },
 "track_order":
 { Args: { "p_code": string,"p_restaurant": string,"p_token": string }; Returns: Json

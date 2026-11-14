@@ -1,4 +1,5 @@
-// Sesión del panel (D12): correo + contraseña y, para el admin, segundo paso TOTP (la base exige aal2).
+// Sesión del panel (D12): correo + contraseña y, para el admin o quien tenga apartados delegados (D38),
+// segundo paso TOTP (la base exige aal2).
 // Copiado de Aura y adaptado a la base compartida (D24).
 import { getSupabase } from '../lib/supabase';
 
@@ -8,6 +9,10 @@ export interface Staff {
   restaurant: string;
   slug: string;
   restaurant_id: string;
+  /** Apartados delegados (D38); el admin los tiene todos. */
+  permissions: string[];
+  /** Admin o persona con apartados delegados: la base exige el segundo paso. */
+  needs_totp: boolean;
 }
 
 export type AuthStep =
@@ -40,8 +45,8 @@ export async function currentStep(): Promise<AuthStep> {
   const { data: factors } = await supabase.auth.mfa.listFactors();
   const verified = factors?.totp.find((factor) => factor.status === 'verified');
   if (verified && aal?.currentLevel !== 'aal2') return { kind: 'verificar_totp', factorId: verified.id };
-  if (me.role === 'admin' && !verified) return { kind: 'inscribir_totp' };
-  return { kind: 'dentro', staff: me };
+  if (me.needs_totp && !verified) return { kind: 'inscribir_totp' };
+  return { kind: 'dentro', staff: { ...me, permissions: me.permissions ?? [] } };
 }
 
 /** Inicia la inscripción del TOTP: QR (SVG en data URL) y secreto para escribirlo a mano. */

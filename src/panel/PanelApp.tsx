@@ -1,6 +1,6 @@
 // Panel del negocio (F5): ingreso con dos pasos, resumen y tablero de pedidos en vivo.
 // Las demás pantallas (ventas, carta, promociones, eventos, editor, clientes, ajustes) llegan en F6–F8.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { formatCop as money } from '../core/money';
 import { CHANNEL_LABEL } from '../core/orders';
 import { currentStep, onAuthChange, signOut, type AuthStep, type Staff } from './auth';
@@ -16,11 +16,32 @@ import { Ventas } from './Ventas';
 import { Inventario } from './Inventario';
 import { WhatsApp } from './WhatsApp';
 import { Resumen } from './Resumen';
+import { Equipo, MiCuenta } from './Equipo';
 import { ToastProvider, beep, notify, useToast } from './ui';
 
 const IDLE_MS = 30 * 60_000;
 type View =
-  'resumen' | 'pedidos' | 'ventas' | 'inventario' | 'whatsapp' | 'carta' | 'sitio' | 'promos' | 'eventos';
+  | 'resumen'
+  | 'pedidos'
+  | 'ventas'
+  | 'inventario'
+  | 'whatsapp'
+  | 'carta'
+  | 'sitio'
+  | 'promos'
+  | 'eventos'
+  | 'equipo';
+// Apartados del menú (D38): la base decide; el menú solo muestra lo que la persona puede usar.
+const NAV: Array<{ view: View; icon: string; group?: string }> = [
+  { view: 'ventas', icon: '📈' },
+  { view: 'inventario', icon: '📦' },
+  { view: 'whatsapp', icon: '💬' },
+  { view: 'carta', icon: '🍔', group: 'Contenido' },
+  { view: 'sitio', icon: '✏️', group: 'Contenido' },
+  { view: 'promos', icon: '🎟️', group: 'Contenido' },
+  { view: 'eventos', icon: '📣', group: 'Contenido' },
+  { view: 'equipo', icon: '👥', group: 'Administración' },
+];
 const TITLES: Record<View, string> = {
   resumen: 'Resumen',
   pedidos: 'Pedidos',
@@ -31,6 +52,7 @@ const TITLES: Record<View, string> = {
   sitio: 'Editar página',
   promos: 'Promociones y cupones',
   eventos: 'Eventos y banners',
+  equipo: 'Equipo y permisos',
 };
 const SOON: Array<[string, string]> = [
   ['👤', 'Clientes'],
@@ -83,14 +105,16 @@ function Gate() {
 function Shell({ staff }: { staff: Staff }) {
   const toast = useToast();
   const isAdmin = staff.role === 'admin';
+  const can = (target: View) =>
+    target === 'resumen' ||
+    target === 'pedidos' ||
+    isAdmin ||
+    (target !== 'equipo' && staff.permissions.includes(target));
   const [view, setView] = useState<View>(() => {
     const hash = location.hash.slice(1) as View;
-    if (hash === 'pedidos') return 'pedidos';
-    return ['ventas', 'inventario', 'whatsapp', 'carta', 'sitio', 'promos', 'eventos'].includes(hash) &&
-      staff.role === 'admin'
-      ? hash
-      : 'resumen';
+    return hash in TITLES && can(hash) ? hash : 'resumen';
   });
+  const [account, setAccount] = useState(false);
   const [orders, setOrders] = useState<PanelOrder[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
@@ -180,58 +204,23 @@ function Shell({ staff }: { staff: Staff }) {
             <span className="ico">🔥</span>Pedidos
             {waiting ? <span className="badge">{waiting}</span> : null}
           </button>
+          {NAV.filter((item) => can(item.view)).map((item, index, list) => (
+            <Fragment key={item.view}>
+              {item.group && item.group !== list[index - 1]?.group ? (
+                <div className="sep">{item.group}</div>
+              ) : null}
+              <button
+                type="button"
+                aria-current={view === item.view ? 'page' : undefined}
+                onClick={() => go(item.view)}
+              >
+                <span className="ico">{item.icon}</span>
+                {TITLES[item.view]}
+              </button>
+            </Fragment>
+          ))}
           {isAdmin ? (
             <>
-              <button
-                type="button"
-                aria-current={view === 'ventas' ? 'page' : undefined}
-                onClick={() => go('ventas')}
-              >
-                <span className="ico">📈</span>Ventas y estadísticas
-              </button>
-              <button
-                type="button"
-                aria-current={view === 'inventario' ? 'page' : undefined}
-                onClick={() => go('inventario')}
-              >
-                <span className="ico">📦</span>Inventario
-              </button>
-              <button
-                type="button"
-                aria-current={view === 'whatsapp' ? 'page' : undefined}
-                onClick={() => go('whatsapp')}
-              >
-                <span className="ico">💬</span>WhatsApp
-              </button>
-              <div className="sep">Contenido</div>
-              <button
-                type="button"
-                aria-current={view === 'carta' ? 'page' : undefined}
-                onClick={() => go('carta')}
-              >
-                <span className="ico">🍔</span>Carta y precios
-              </button>
-              <button
-                type="button"
-                aria-current={view === 'sitio' ? 'page' : undefined}
-                onClick={() => go('sitio')}
-              >
-                <span className="ico">✏️</span>Editar página
-              </button>
-              <button
-                type="button"
-                aria-current={view === 'promos' ? 'page' : undefined}
-                onClick={() => go('promos')}
-              >
-                <span className="ico">🎟️</span>Promociones y cupones
-              </button>
-              <button
-                type="button"
-                aria-current={view === 'eventos' ? 'page' : undefined}
-                onClick={() => go('eventos')}
-              >
-                <span className="ico">📣</span>Eventos y banners
-              </button>
               <div className="sep">Próximas fases</div>
               {SOON.map(([icon, label]) => (
                 <button type="button" disabled key={label}>
@@ -248,9 +237,18 @@ function Shell({ staff }: { staff: Staff }) {
             <span className="avatar">{staff.name.charAt(0)}</span>
             <div>
               <b>{staff.name}</b>
-              <small>{isAdmin ? 'Administrador · 2 pasos activos' : 'Operador de pedidos'}</small>
+              <small>
+                {isAdmin
+                  ? 'Administrador · 2 pasos activos'
+                  : staff.permissions.length
+                    ? 'Operador · 2 pasos activos'
+                    : 'Operador de pedidos'}
+              </small>
             </div>
           </div>
+          <button className="btn btn-soft btn-sm btn-block" type="button" onClick={() => setAccount(true)}>
+            Mi cuenta
+          </button>
           <button className="btn btn-soft btn-sm btn-block" type="button" onClick={() => void signOut()}>
             Cerrar sesión
           </button>
@@ -290,7 +288,7 @@ function Shell({ staff }: { staff: Staff }) {
             <Resumen
               summary={summary}
               orders={orders}
-              isAdmin={isAdmin}
+              isAdmin={can('ventas')}
               now={now}
               onOpenBoard={() => go('pedidos')}
             />
@@ -302,23 +300,26 @@ function Shell({ staff }: { staff: Staff }) {
               restaurant={staff.restaurant}
               onChanged={() => void reload()}
             />
-          ) : view === 'ventas' && isAdmin ? (
+          ) : view === 'ventas' && can('ventas') ? (
             <Ventas restaurant={staff.restaurant} />
-          ) : view === 'inventario' && isAdmin ? (
+          ) : view === 'inventario' && can('inventario') ? (
             <Inventario restaurantId={staff.restaurant_id} />
-          ) : view === 'whatsapp' && isAdmin ? (
+          ) : view === 'whatsapp' && can('whatsapp') ? (
             <WhatsApp restaurantId={staff.restaurant_id} restaurant={staff.restaurant} />
-          ) : view === 'carta' && isAdmin ? (
+          ) : view === 'carta' && can('carta') ? (
             <Carta restaurantId={staff.restaurant_id} />
-          ) : view === 'sitio' && isAdmin ? (
+          ) : view === 'sitio' && can('sitio') ? (
             <EditarPagina restaurantId={staff.restaurant_id} />
-          ) : view === 'promos' && isAdmin ? (
+          ) : view === 'promos' && can('promos') ? (
             <Promociones restaurantId={staff.restaurant_id} />
-          ) : view === 'eventos' && isAdmin ? (
+          ) : view === 'eventos' && can('eventos') ? (
             <Eventos restaurantId={staff.restaurant_id} />
+          ) : view === 'equipo' && can('equipo') ? (
+            <Equipo />
           ) : null}
         </main>
       </div>
+      {account ? <MiCuenta onClose={() => setAccount(false)} /> : null}
       {manual ? (
         <ManualOrder
           restaurantId={staff.restaurant_id}

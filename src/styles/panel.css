@@ -1204,3 +1204,81 @@ td.down {
 .wa-preview .quote-msg {
   max-width: none;
 }
+
+/* Equipo (D38) */
+.team-form {
+  display: grid;
+  gap: 14px;
+}
+.team-form .field > span,
+.team-controls .field > span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.team-form > .btn {
+  justify-self: start;
+}
+.team-list {
+  display: grid;
+}
+.team-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(0, 2fr);
+  gap: 16px;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+.team-row:first-child {
+  border-top: 0;
+}
+.team-row.is-off {
+  opacity: 0.6;
+}
+.team-who {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  min-width: 0;
+}
+.team-who b {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.team-who small {
+  color: var(--text-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.team-controls {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.team-controls .select {
+  max-width: 240px;
+}
+.team-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.temp-pass {
+  margin: 14px 0;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 18px;
+  letter-spacing: 0.04em;
+  text-align: center;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+@media (max-width: 720px) {
+  .team-row {
+    grid-template-columns: 1fr;
+  }
+}
