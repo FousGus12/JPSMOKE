@@ -23,7 +23,8 @@ export const nombre = z
   .trim()
   .min(3, 'Escribe tu nombre')
   .max(80)
-  .regex(/^[\p{L}][\p{L} .'-]*$/u, 'Escribe solo tu nombre, sin números ni símbolos');
+  .regex(/^[\p{L}](?:[\p{L} '-]|\.(?=\s|$))*$/u, 'Escribe solo tu nombre, sin números ni símbolos');
+// D39: el punto solo como abreviatura ("Ma. José"): nada de dominios tipo premio-jp.com.
 
 export const pedidoSchema = z
   .object({

@@ -69,8 +69,8 @@ function OneTimePassword({
   return (
     <Modal title="Contraseña temporal" onClose={onClose}>
       <p className="note">
-        Entrégasela a <b>{email}</b> en persona o por un canal privado. <b>No se vuelve a mostrar.</b> La
-        persona debe cambiarla en "Mi cuenta" al entrar.
+        Entrégasela a <b>{email}</b> en persona o por un canal privado. <b>No se vuelve a mostrar.</b> Al
+        entrar, el panel le pedirá crear su propia contraseña.
       </p>
       <p className="temp-pass" data-testid="temp-pass">
         {password}

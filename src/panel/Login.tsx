@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode, type SyntheticEvent } from 'react';
 import { enrollTotp, signIn, signOut, verifyTotp } from './auth';
+import { changeMyPassword } from './team-data';
 
 const message = (error: unknown) =>
   error instanceof Error ? error.message : 'Algo salió mal. Inténtalo de nuevo.';
@@ -176,6 +177,65 @@ export function Verify({ factorId, onDone }: { factorId: string; onDone: () => v
     <Frame title="Código de seguridad">
       <p className="muted">Abre tu app de autenticación y escribe el código de 6 dígitos del panel.</p>
       <CodeForm factorId={factorId} onDone={onDone} label="Verificar y entrar" />
+      <Exit />
+    </Frame>
+  );
+}
+
+/** Clave temporal (D39): hay que cambiarla antes de entrar al panel. */
+export function ChangeTemp({ onDone }: { onDone: () => void }) {
+  const [password, setPassword] = useState('');
+  const [again, setAgain] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function submit(event: SyntheticEvent) {
+    event.preventDefault();
+    if (password.length < 12) return setError('Usa al menos 12 caracteres.');
+    if (password !== again) return setError('Las dos contraseñas no coinciden.');
+    setBusy(true);
+    setError('');
+    try {
+      await changeMyPassword(password);
+      onDone();
+    } catch (failure) {
+      setError(message(failure));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Frame title="Crea tu contraseña">
+      <p className="muted">
+        Entraste con una contraseña temporal. Crea la tuya para seguir; solo tú la conocerás.
+      </p>
+      <form className="form" onSubmit={submit} noValidate>
+        <div className="field">
+          <label htmlFor="c-pass">Nueva contraseña (mínimo 12 caracteres)</label>
+          <input
+            className="input"
+            id="c-pass"
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="c-again">Repítela</label>
+          <input
+            className="input"
+            id="c-again"
+            type="password"
+            autoComplete="new-password"
+            value={again}
+            onChange={(event) => setAgain(event.target.value)}
+          />
+        </div>
+        <ErrorText text={error} />
+        <button className="btn btn-primary btn-block btn-lg" type="submit" disabled={busy}>
+          {busy ? 'Guardando…' : 'Guardar y seguir'}
+        </button>
+      </form>
       <Exit />
     </Frame>
   );

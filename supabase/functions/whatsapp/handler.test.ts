@@ -96,7 +96,8 @@ Deno.test('Meta rechaza: fallido con código', async () => {
 });
 
 Deno.test('safeName deja solo un primer nombre seguro (auditoría)', () => {
-  assertEquals(safeName('bit.ly/pago-jp\n\nURGENTE'), 'bit.ly');
+  assertEquals(safeName('bit.ly/pago-jp\n\nURGENTE'), 'bit');
+  assertEquals(safeName('premio-jp.com Pérez'), 'premio-jp'); // D39: sin dominios
   assertEquals(safeName('María José'), 'María');
   assertEquals(safeName('https://x.co'), 'https');
   assertEquals(safeName(''), 'cliente');

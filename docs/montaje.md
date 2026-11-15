@@ -13,7 +13,7 @@ Orden: Supabase → secretos → migraciones → funciones → datos del restaur
 
 ## 1. Repositorio 🔒
 
-1. Crear repo privado en GitHub (CLOUP.CO). Rama `main` protegida con CI obligatoria; rama `produccion` para Vercel.
+1. Repo en GitHub (JP Smoke quedó **público** por decisión del dueño, D36). `main` = vista previa; `produccion` = producción en Vercel. La CI corre en PR, en `main` y en `produccion`.
 2. Primer commit desde `jp-smoke/` (el hook bloquea secretos; `respaldos/` y `.env*` ya están ignorados).
 
 ## 2. Supabase 🔒 (costo: plan gratuito al inicio; Pro USD 25/mes para respaldo diario y sin pausa)
@@ -22,7 +22,7 @@ Orden: Supabase → secretos → migraciones → funciones → datos del restaur
    `security add-generic-password -U -a jp-smoke -s jp-smoke-db-password -w`
 2. Guardar en el Llavero: `jp-smoke-project-ref`, `jp-smoke-pooler-host`, `jp-smoke-supabase-token` (token personal de la CLI).
 3. `supabase link --project-ref <ref>`. `scripts/remoto.sh` se niega a seguir si el ref es de Aura, Pulso, GMDevz o Rutami.
-4. Auth → URL del sitio y redirecciones: dominio final y `https://*.vercel.app` de vistas previas. SSL obligatorio en *Database settings*.
+4. Auth → URL del sitio y redirecciones: **solo** el dominio final (p. ej. `https://jpsmoke.vercel.app/**`). Nunca comodines sobre `*.vercel.app`: cualquiera puede crear un proyecto ahí y recibir enlaces de acceso (auditoría run-2, D39). El panel entra con contraseña y no necesita redirecciones de vistas previas. SSL obligatorio en *Database settings*.
 
 ## 3. Secretos de las Edge Functions 🔒
 

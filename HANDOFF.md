@@ -1,6 +1,6 @@
 # HANDOFF · JP Smoke
 
-> **Última actualización:** 2026-11-14 (montaje D36 + equipo gestionable D38) · **Roadmap:** v0.15 · **Git:** `main` y `produccion` en GitHub (PR #1 unido)
+> **Última actualización:** 2026-11-14 (montaje D36, equipo D38, correcciones de la auditoría run-2 D39) · **Roadmap:** v0.16 · **Git:** `main` y `produccion` en GitHub (PR #1 unido)
 >
 > **Para retomar en otro chat** (copiar tal cual):
 >
@@ -72,7 +72,7 @@ Micro app de pedidos para restaurantes, empezando por **JP Smoke** (hamburguesas
 
 ## 5. Mapa del código
 
-- `supabase/migrations/` — 11 migraciones (11.ª equipo y apartados, D38) (10.ª endurecimiento: `anon` solo SELECT de lo público, D34; 7.ª inventario: `register_supply`, `stock_status`, `place_order` envuelve a `private.place_order_core`; 8.ª WhatsApp: cola, `whatsapp_claim`, `whatsapp_mark`, cron; 9.ª `rate_count` para el seguimiento): núcleo (tablas, RLS), pedidos (`place_order`, `track_order`, `set_order_status`, `create_manual_order`, `capture_lead`), panel (aal2 exigido para admin, `board_summary`), editor (Storage `carta`, bloques, `publish_site`, auditoría), promos y eventos (cotizaciones, `set_intro_event`), ventas (`sales_summary`, `sales_export`, cierre de caja, `weekly_report`).
+- `supabase/migrations/` — 12 migraciones (11.ª equipo y apartados, D38; 12.ª correcciones de la auditoría run-2, D39) (10.ª endurecimiento: `anon` solo SELECT de lo público, D34; 7.ª inventario: `register_supply`, `stock_status`, `place_order` envuelve a `private.place_order_core`; 8.ª WhatsApp: cola, `whatsapp_claim`, `whatsapp_mark`, cron; 9.ª `rate_count` para el seguimiento): núcleo (tablas, RLS), pedidos (`place_order`, `track_order`, `set_order_status`, `create_manual_order`, `capture_lead`), panel (aal2 exigido para admin, `board_summary`), editor (Storage `carta`, bloques, `publish_site`, auditoría), promos y eventos (cotizaciones, `set_intro_event`), ventas (`sales_summary`, `sales_export`, cierre de caja, `weekly_report`).
 - `supabase/functions/` — `crear-pedido`, `seguir-pedido`, `captar`, `cotizar`, `publicar`, `whatsapp` (+ `_shared/`: CORS, Zod compartido con el sitio, Turnstile, token del enlace, plantillas de WhatsApp).
 - `supabase/tests/` — 13 archivos pgTAP (permisos, aislamiento entre restaurantes, roles, pedidos, público, dos pasos, editor, promos, ventas, inventario, WhatsApp, punto físico, endurecimiento) + `scripts/prueba-simultaneos.sh`.
 - `src/pages/` — `index`, `pedido`, `privacidad`, `terminos`, `devoluciones`, `pqrs`, `panel/`, `sitemap.xml`, `robots.txt`, `404`.
@@ -94,6 +94,11 @@ Micro app de pedidos para restaurantes, empezando por **JP Smoke** (hamburguesas
 - **Recoger en tienda**: `pickup_enabled` exige `store_open` y dirección (restricción en la base); se aplica en vivo, la dirección y el horario del local se ven al publicar.
 - **Respaldo**: `pg_dump` ignora `-n` si hay `-t` (por eso dos pasadas); restaurar con `session_replication_role = replica` o los triggers de inventario descuentan otra vez.
 - **Permisos (D38)**: nunca volver a `is_admin_of`/`my_role() = 'admin'` en políticas o RPC nuevas: usar `can('apartado')` o `can_of(rid, 'apartado')`. Apartados: ventas, inventario, whatsapp, carta, sitio, promos, eventos; `equipo` es solo admin. Columnas nuevas de `restaurant_settings` caen en `sitio` salvo que se mapeen en `private.guard_settings` (hoy el número de WhatsApp y `channels` son de Sitio: quien tenga Sitio puede cambiarlos). Operador con apartados = exige TOTP. `staff` no se borra (guardias); se desactiva.
+- **Ajustes del restaurante (D39)**: `private.guard_settings` usa lista explícita columna → apartado; columna nueva = solo admin hasta agregarla a la lista. El número de WhatsApp del negocio es del apartado WhatsApp. `published_at` solo lo escriben `publish_site`/`unmark_published` (bandera `jps.publicando`); tope extra de 20 publicaciones/hora por restaurante.
+- **Sesiones (D39)**: `my_restaurant()` exige que exista `auth.sessions` con el `session_id` del JWT (los claims de pgTAP sin `session_id` se tratan como sesión viva). Cambiar una contraseña por la API admin cierra TODAS las sesiones de esa cuenta: el panel vuelve a iniciar sesión con la clave nueva.
+- **Clave temporal (D39)**: `staff.must_change_password` lo pone la función `equipo` al crear o restablecer; sin panel hasta cambiarla (acción `cambiar_clave` de `equipo`, que exige aal2 si la cuenta ya tiene TOTP). Solo el servidor quita la marca.
+- **Seguimiento por 4 dígitos (D39)**: además de 5 fallos/hora, 15 fallos acumulados por pedido (`private.track_fails`); después solo sirve el enlace con token.
+- **Respaldo (D39)**: el repo es público y el artefacto cifrado se puede descargar: `BACKUP_PASSPHRASE` de mínimo 32 caracteres aleatorios.
 - **Equipo**: altas y claves temporales por la Edge Function `equipo` (la clave se muestra una vez y cierra sesiones con `revoke_sessions`, solo service_role). `scripts/crear-cuenta.sh` sigue sirviendo para el primer admin de un restaurante nuevo.
 - **`place_order`** es un envoltorio: la lógica está en `private.place_order_core`; si se cambia, mantener el manejo de `P0002` (agotado por inventario).
 
@@ -110,7 +115,7 @@ Micro app de pedidos para restaurantes, empezando por **JP Smoke** (hamburguesas
 
 ## 7. Decisiones recientes (detalle en ROADMAP §14)
 
-D24 base compartida · D25 todo local · D26 pedido del cliente en F4 · D27 rojo de texto aparte (`--accent-text`) · ambiente más suave (tokens `--glow` 13 %, `--smoke` 0,22, `--grain` 0,025; antes 22 %, 0,35 y 0,04) · D28 qué se ve en vivo y qué al publicar · D29 ventas y caja · **D30 inventario** (se descuenta al entrar el pedido, vuelve al cancelar) · **D31 Better Auth descartado** · **D32 WhatsApp** (modos, cola sin datos personales, JP Smoke en prueba) · **D33 punto físico y recoger en tienda** · **D34 mínimo privilegio para anon** · **D35 correcciones de la auditoría** · **D36 montaje** · **D38 equipo gestionable**. Ambiente del vino bajado (tokens `--glow`, `--smoke`, `--grain`). Descartado: cupón de cumpleaños (D22), verificación del celular por código (D13).
+D24 base compartida · D25 todo local · D26 pedido del cliente en F4 · D27 rojo de texto aparte (`--accent-text`) · ambiente más suave (tokens `--glow` 13 %, `--smoke` 0,22, `--grain` 0,025; antes 22 %, 0,35 y 0,04) · D28 qué se ve en vivo y qué al publicar · D29 ventas y caja · **D30 inventario** (se descuenta al entrar el pedido, vuelve al cancelar) · **D31 Better Auth descartado** · **D32 WhatsApp** (modos, cola sin datos personales, JP Smoke en prueba) · **D33 punto físico y recoger en tienda** · **D34 mínimo privilegio para anon** · **D35 correcciones de la auditoría** · **D36 montaje** · **D38 equipo gestionable** · **D39 correcciones auditoría run-2** (informe en `~/security-audit-skill/jp-smoke/run-2/`; pendientes por validar: XFF del gateway de Supabase). Ambiente del vino bajado (tokens `--glow`, `--smoke`, `--grain`). Descartado: cupón de cumpleaños (D22), verificación del celular por código (D13).
 
 ## 8. Siguientes pasos
 

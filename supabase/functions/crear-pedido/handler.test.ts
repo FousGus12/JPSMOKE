@@ -177,12 +177,12 @@ Deno.test('domicilio sin dirección: datos inválidos', async () => {
 });
 
 Deno.test('nombre con URL o salto de línea: datos inválidos (auditoría)', async () => {
-  for (const name of ['bit.ly/pago', 'Ana\nURGENTE', 'Juan 123']) {
+  for (const name of ['bit.ly/pago', 'Ana\nURGENTE', 'Juan 123', 'premio-jp.com', 'bit.ly']) {
     const res = await handle(post({ ...valid, customer: { ...valid.customer, name } }), deps());
     assertEquals(res.status, 400, name);
   }
   const ok = await handle(
-    post({ ...valid, customer: { ...valid.customer, name: "María José O'Neil-Pérez" } }),
+    post({ ...valid, customer: { ...valid.customer, name: "Ma. José O'Neil-Pérez" } }),
     deps(),
   );
   assertEquals(ok.status, 201);

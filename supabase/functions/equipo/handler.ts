@@ -31,11 +31,17 @@ export interface Deps {
   staffRestaurant: (userId: string) => Promise<string | null>;
   setPassword: (userId: string, password: string) => Promise<boolean>;
   randomPassword: () => string;
+  /** Quien llama (JWT validado por Auth): id, nivel aal, si tiene TOTP verificado y si es del equipo. */
+  callerInfo: (
+    authorization: string,
+  ) => Promise<{ id: string; aal: string; hasTotp: boolean; isStaff: boolean } | null>;
+  /** Cambia la propia clave y quita la marca de clave temporal (D39). */
+  changeOwnPassword: (userId: string, password: string) => Promise<boolean>;
   allowedOrigins: string[];
 }
 
 export type TeamError =
-  'sin_permiso' | 'datos_invalidos' | 'correo_en_uso' | 'no_encontrado' | 'propia' | 'error';
+  'sin_permiso' | 'datos_invalidos' | 'correo_en_uso' | 'no_encontrado' | 'propia' | 'clave_corta' | 'error';
 
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[a-z]{2,24}$/i;
 const NAME = /^[\p{L} .'-]{2,80}$/u;
@@ -80,6 +86,22 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     body = (await request.json()) as Record<string, unknown>;
   } catch {
     return fail('datos_invalidos', 400);
+  }
+
+  // Cambiar la propia clave (D39): sirve también con la clave temporal pendiente (sin acceso al panel).
+  // Si la cuenta ya tiene código de dos pasos, exige la sesión con el código (aal2).
+  if (body.action === 'cambiar_clave') {
+    const password = typeof body.password === 'string' ? body.password : '';
+    if (password.length < 12 || password.length > 72) return fail('clave_corta', 400);
+    try {
+      const me = await deps.callerInfo(authorization);
+      if (!me || !me.isStaff) return fail('sin_permiso', 403);
+      if (me.hasTotp && me.aal !== 'aal2') return fail('sin_permiso', 403);
+      if (!(await deps.changeOwnPassword(me.id, password))) return fail('error', 500);
+      return json({ ok: true }, 200, cors);
+    } catch {
+      return fail('error', 500);
+    }
   }
 
   const { data: restaurantId, error } = await deps.callerRestaurant(authorization);

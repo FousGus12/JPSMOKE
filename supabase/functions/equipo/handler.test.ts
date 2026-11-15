@@ -29,6 +29,11 @@ function deps(over: Partial<Deps> = {}): Deps & { calls: string[] } {
       return Promise.resolve(true);
     },
     randomPassword: () => 'temporal-123',
+    callerInfo: () => Promise.resolve({ id: OTHER, aal: 'aal1', hasTotp: false, isStaff: true }),
+    changeOwnPassword: (id) => {
+      calls.push(`own:${id}`);
+      return Promise.resolve(true);
+    },
     allowedOrigins: ['local'],
     ...over,
   };
@@ -100,4 +105,33 @@ Deno.test('valida datos', () => {
 });
 Deno.test('clave temporal de 24 caracteres', () => {
   assertEquals(randomPassword().length, 24);
+});
+
+Deno.test('cambia la propia clave aunque tenga la temporal pendiente', async () => {
+  const d = deps({
+    callerRestaurant: () => Promise.resolve({ data: null, error: { message: 'x', code: '42501' } }),
+  });
+  const res = await handle(post({ action: 'cambiar_clave', password: 'una-clave-larga-1' }), d);
+  assertEquals(res.status, 200);
+  assertEquals(d.calls, [`own:${OTHER}`]);
+});
+Deno.test('cambiar la propia clave exige el código si ya lo tiene', async () => {
+  const d = deps({
+    callerInfo: () => Promise.resolve({ id: OTHER, aal: 'aal1', hasTotp: true, isStaff: true }),
+  });
+  assertEquals(
+    (await handle(post({ action: 'cambiar_clave', password: 'una-clave-larga-1' }), d)).status,
+    403,
+  );
+  assertEquals(d.calls, []);
+});
+Deno.test('clave propia muy corta: 400', async () => {
+  assertEquals((await handle(post({ action: 'cambiar_clave', password: 'corta' }), deps())).status, 400);
+});
+Deno.test('quien no es del equipo no cambia claves: 403', async () => {
+  const d = deps({ callerInfo: () => Promise.resolve(null) });
+  assertEquals(
+    (await handle(post({ action: 'cambiar_clave', password: 'una-clave-larga-1' }), d)).status,
+    403,
+  );
 });

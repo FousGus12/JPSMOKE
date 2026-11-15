@@ -39,6 +39,7 @@ Deno.serve((request) =>
         full_name: row.full_name,
         role: row.role,
         permissions: row.permissions,
+        must_change_password: true,
       });
       return !error;
     },
@@ -53,11 +54,50 @@ Deno.serve((request) =>
     setPassword: async (userId, password) => {
       const { error } = await service.auth.admin.updateUserById(userId, { password });
       if (error) return false;
+      // Clave temporal (D39): la persona debe cambiarla antes de volver a entrar al panel.
+      const { error: mark } = await service
+        .from('staff')
+        .update({ must_change_password: true })
+        .eq('user_id', userId);
+      if (mark) return false;
       // La clave anterior pudo estar comprometida: se cierran sus sesiones abiertas.
       const { error: revoke } = await service.rpc('revoke_sessions', { p_user: userId });
       return !revoke;
     },
     randomPassword,
+    callerInfo: async (authorization) => {
+      const token = authorization.replace(/^Bearer /, '');
+      const { data } = await service.auth.getUser(token);
+      const user = data.user;
+      if (!user) return null;
+      // El token ya fue validado por Auth: se lee el nivel aal de sus claims.
+      let aal = 'aal1';
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))) as {
+          aal?: string;
+        };
+        aal = payload.aal ?? 'aal1';
+      } catch {
+        aal = 'aal1';
+      }
+      const hasTotp = (user.factors ?? []).some((factor) => factor.status === 'verified');
+      const { data: staff } = await service
+        .from('staff')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .eq('active', true)
+        .maybeSingle();
+      return { id: user.id, aal, hasTotp, isStaff: Boolean(staff) };
+    },
+    changeOwnPassword: async (userId, password) => {
+      const { error } = await service.auth.admin.updateUserById(userId, { password });
+      if (error) return false;
+      const { error: clear } = await service
+        .from('staff')
+        .update({ must_change_password: false })
+        .eq('user_id', userId);
+      return !clear;
+    },
     allowedOrigins: (Deno.env.get('CORS_ALLOWED_ORIGINS') ?? 'local')
       .split(',')
       .map((origin) => origin.trim()),

@@ -13,10 +13,13 @@ export interface Staff {
   permissions: string[];
   /** Admin o persona con apartados delegados: la base exige el segundo paso. */
   needs_totp: boolean;
+  /** Clave temporal sin cambiar (D39): no entra al panel hasta cambiarla. */
+  must_change_password?: boolean;
 }
 
 export type AuthStep =
   | { kind: 'sin_sesion' }
+  | { kind: 'cambiar_clave' }
   | { kind: 'inscribir_totp' }
   | { kind: 'verificar_totp'; factorId: string }
   | { kind: 'dentro'; staff: Staff };
@@ -45,6 +48,7 @@ export async function currentStep(): Promise<AuthStep> {
   const { data: factors } = await supabase.auth.mfa.listFactors();
   const verified = factors?.totp.find((factor) => factor.status === 'verified');
   if (verified && aal?.currentLevel !== 'aal2') return { kind: 'verificar_totp', factorId: verified.id };
+  if (me.must_change_password) return { kind: 'cambiar_clave' };
   if (me.needs_totp && !verified) return { kind: 'inscribir_totp' };
   return { kind: 'dentro', staff: { ...me, permissions: me.permissions ?? [] } };
 }

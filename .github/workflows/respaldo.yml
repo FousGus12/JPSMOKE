@@ -1,6 +1,8 @@
 # Respaldo diario de la base remota de JP Smoke (§7). Vuelca esquema y datos, los cifra (AES-256,
 # frase en el secreto BACKUP_PASSPHRASE, copia en el Llavero como jp-smoke-backup-passphrase) y los
-# guarda 30 días como artefacto privado del repo. Nunca sube nada sin cifrar.
+# guarda 30 días como artefacto. OJO (D36/D39): el repo es PÚBLICO, así que el artefacto cifrado lo puede
+# descargar cualquiera; la protección es la frase: usar mínimo 32 caracteres aleatorios
+# (openssl rand -base64 32). Nunca sube nada sin cifrar.
 # Se activa cuando existan los secretos JPS_DB_URL y BACKUP_PASSPHRASE; hasta entonces avisa y sale.
 name: Respaldo diario
 
@@ -16,12 +18,12 @@ jobs:
   respaldo:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      JPS_DB_URL: ${{ secrets.JPS_DB_URL }}
-      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
     steps:
       - name: ¿Hay secretos?
         id: listo
+        env:
+          JPS_DB_URL: ${{ secrets.JPS_DB_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
         run: |
           if [ -z "$JPS_DB_URL" ] || [ -z "$BACKUP_PASSPHRASE" ]; then
             echo "::warning::Respaldo sin configurar: faltan JPS_DB_URL o BACKUP_PASSPHRASE."
@@ -38,6 +40,10 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17 >/dev/null
       - name: Volcar y cifrar
         if: steps.listo.outputs.ok == 'true'
+        # Los secretos solo existen en este paso (no los ve ninguna acción de terceros).
+        env:
+          JPS_DB_URL: ${{ secrets.JPS_DB_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
         run: |
           set -euo pipefail
           mkdir -p out
@@ -47,7 +53,8 @@ jobs:
           $PGD -d "$JPS_DB_URL" --data-only --table=auth.users --table=auth.identities --table=storage.objects \
             --column-inserts --no-owner --no-privileges -f out/datos.sql
           $PGD -d "$JPS_DB_URL" --data-only --schema=public --column-inserts --no-owner --no-privileges >> out/datos.sql
-          grep -q 'INSERT INTO public.services' out/datos.sql
+          # Prueba de que el volcado trae datos del restaurante (D39: antes buscaba una tabla que no existe).
+          grep -q 'INSERT INTO public.restaurants' out/datos.sql
           tar -czf - -C out . | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:BACKUP_PASSPHRASE -out respaldo.tgz.enc
           rm -rf out
       - uses: actions/upload-artifact@v4

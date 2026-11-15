@@ -46,12 +46,24 @@ test('el admin crea un operador con Ventas y ve la clave una sola vez', async ({
   await expect(page.getByTestId('miembro-admin.dev@jpsmoke.test').getByLabel('Rol')).toBeDisabled();
 });
 
-test('la persona entra con la clave temporal, activa su código y ve solo lo suyo', async ({ page }) => {
+test('la persona entra con la clave temporal, crea la suya, activa su código y ve solo lo suyo', async ({
+  page,
+}) => {
   await page.goto('/panel');
   await page.getByLabel('Correo').fill(EMAIL);
   await page.getByLabel('Contraseña').fill(temp);
   await page.getByRole('button', { name: 'Entrar' }).click();
+  // D39: con la clave temporal, primero debe crear la suya.
+  await expect(page.getByRole('heading', { name: 'Crea tu contraseña' })).toBeVisible({ timeout: 15_000 });
+  await page.getByLabel('Nueva contraseña (mínimo 12 caracteres)').fill('MiClavePropia-2026');
+  await page.getByLabel('Repítela').fill('MiClavePropia-2026');
+  await page.getByRole('button', { name: 'Guardar y seguir' }).click();
   await enroll(page);
+  expect(
+    sql(
+      `select s.must_change_password from public.staff s join auth.users u on u.id = s.user_id where u.email = '${EMAIL}'`,
+    ),
+  ).toBe('f');
   const nav = page.locator('.side-nav');
   await expect(nav.getByRole('button', { name: /Ventas y estadísticas/ })).toBeAttached();
   await expect(nav.getByRole('button', { name: /Carta y precios/ })).toHaveCount(0);

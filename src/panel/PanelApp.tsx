@@ -5,7 +5,7 @@ import { formatCop as money } from '../core/money';
 import { CHANNEL_LABEL } from '../core/orders';
 import { currentStep, onAuthChange, signOut, type AuthStep, type Staff } from './auth';
 import { loadOrders, loadSummary, watchOrders, type PanelOrder, type Summary } from './data';
-import { Credentials, Enroll, Verify } from './Login';
+import { ChangeTemp, Credentials, Enroll, Verify } from './Login';
 import { ManualOrder } from './ManualOrder';
 import { Pedidos } from './Pedidos';
 import { Carta } from './Carta';
@@ -97,6 +97,7 @@ function Gate() {
 
   if (!step) return <p className="muted center">Cargando…</p>;
   if (step.kind === 'sin_sesion') return <Credentials onDone={refresh} />;
+  if (step.kind === 'cambiar_clave') return <ChangeTemp onDone={refresh} />;
   if (step.kind === 'inscribir_totp') return <Enroll onDone={refresh} />;
   if (step.kind === 'verificar_totp') return <Verify factorId={step.factorId} onDone={refresh} />;
   return <Shell staff={step.staff} />;

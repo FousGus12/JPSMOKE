@@ -36,12 +36,12 @@ export type Built = { to: string; template: WaKind; params: string[]; preview: s
 const cop = (value: number) =>
   `$${new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(Math.round(value))}`;
 /** Celular colombiano de 10 dígitos o el número del negocio (57 + 10). Devuelve el formato de Meta (57…). */
-/** Primer nombre seguro para un parámetro de plantilla: solo letras, punto, apóstrofo y guion; máximo 30. */
+/** Primer nombre seguro para un parámetro de plantilla: solo letras, apóstrofo y guion (sin punto: nada de dominios, D39); máximo 30. */
 export function safeName(name: string | null | undefined): string {
   const clean =
     (name ?? '')
       .normalize('NFC')
-      .replace(/[^\p{L} .'-]/gu, ' ')
+      .replace(/[^\p{L} '-]/gu, ' ')
       .trim()
       .split(/\s+/)[0] ?? '';
   return clean.slice(0, 30) || 'cliente';

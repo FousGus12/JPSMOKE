@@ -479,14 +479,14 @@ isOneToOne: false
                   ]
                 },"staff": {
                   Row: {
-                    "active": boolean,"created_at": string,"full_name": string,"permissions": (string)[],"restaurant_id": string,"role": Database["public"]['Enums']["staff_role"],"user_id": string
+                    "active": boolean,"created_at": string,"full_name": string,"must_change_password": boolean,"permissions": (string)[],"restaurant_id": string,"role": Database["public"]['Enums']["staff_role"],"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "active"?: boolean,"created_at"?: string,"full_name": string,"permissions"?: (string)[],"restaurant_id": string,"role"?: Database["public"]['Enums']["staff_role"],"user_id": string
+                    "active"?: boolean,"created_at"?: string,"full_name": string,"must_change_password"?: boolean,"permissions"?: (string)[],"restaurant_id": string,"role"?: Database["public"]['Enums']["staff_role"],"user_id": string
                   }
                   Update: {
-                    "active"?: boolean,"created_at"?: string,"full_name"?: string,"permissions"?: (string)[],"restaurant_id"?: string,"role"?: Database["public"]['Enums']["staff_role"],"user_id"?: string
+                    "active"?: boolean,"created_at"?: string,"full_name"?: string,"must_change_password"?: boolean,"permissions"?: (string)[],"restaurant_id"?: string,"role"?: Database["public"]['Enums']["staff_role"],"user_id"?: string
                   }
                   Relationships: [
                     {

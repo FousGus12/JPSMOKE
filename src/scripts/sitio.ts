@@ -706,7 +706,7 @@ function submitData() {
     '#f-name',
     form.name.length < 3
       ? 'Escribe tu nombre'
-      : /^[\p{L}][\p{L} .'-]*$/u.test(form.name)
+      : /^[\p{L}](?:[\p{L} '-]|\.(?=\s|$))*$/u.test(form.name)
         ? ''
         : 'Escribe solo tu nombre, sin números ni símbolos',
   );

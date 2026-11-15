@@ -89,16 +89,35 @@ export function resetPassword(userId: string): Promise<FnResult> {
   return callTeam({ action: 'reset', user_id: userId });
 }
 
-/** Cambio de la propia contraseña (Supabase Auth exige sesión vigente). */
+/** Cambio de la propia contraseña (D39): por la función `equipo`, que también quita la marca de clave
+ * temporal y exige el código de dos pasos si la cuenta ya lo tiene. */
 export async function changeMyPassword(password: string): Promise<void> {
   if (password.length < 12) throw new Error('Usa al menos 12 caracteres.');
-  const { error } = await getSupabase().auth.updateUser({ password });
-  if (error)
-    throw new Error(
-      error.code === 'same_password'
-        ? 'La nueva contraseña debe ser distinta de la actual.'
-        : error.code === 'weak_password'
-          ? 'Esa contraseña es muy débil. Usa una más larga.'
-          : 'No se pudo cambiar la contraseña. Vuelve a entrar e inténtalo de nuevo.',
-    );
+  const supabase = getSupabase();
+  const env = readPublicEnv();
+  const { data: session } = await supabase.auth.getSession();
+  const token = session.session?.access_token;
+  if (!token) throw new Error('Tu sesión venció. Vuelve a entrar.');
+  const res = await fetch(`${env.PUBLIC_SUPABASE_URL}/functions/v1/equipo`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: env.PUBLIC_SUPABASE_ANON_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ action: 'cambiar_clave', password }),
+  }).catch(() => null);
+  const json = (await res?.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  if (res?.ok && json.ok) {
+    // Cambiar la clave cierra todas las sesiones de la cuenta: se vuelve a entrar con la nueva.
+    const email = session.session?.user.email ?? '';
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw new Error('Contraseña cambiada. Vuelve a entrar con la nueva.');
+    return;
+  }
+  const messages: Record<string, string> = {
+    clave_corta: 'Usa entre 12 y 72 caracteres.',
+    sin_permiso: 'Entra con tu código de seguridad para cambiar la contraseña.',
+  };
+  throw new Error(messages[json.error ?? ''] ?? 'No se pudo cambiar la contraseña. Inténtalo de nuevo.');
 }
