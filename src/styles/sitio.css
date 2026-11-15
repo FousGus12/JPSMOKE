@@ -377,13 +377,19 @@ a {
   color: var(--accent-text);
 }
 
+/* Reducir movimiento (ajuste del celular): sin animaciones repetidas. Antes se acortaban a 1 ms y, al ser
+   infinitas, la franja y el humo parpadeaban sin parar en celulares con el ajuste activo. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 1ms !important;
+    animation: none !important;
     transition-duration: 1ms !important;
     scroll-behavior: auto !important;
+  }
+  .strip {
+    overflow-x: auto;
+    scrollbar-width: none;
   }
 }
 
@@ -615,6 +621,12 @@ body::after {
   position: relative;
   height: 230vh;
 }
+@media (max-width: 760px) {
+  /* En celular un deslizamiento recorre mucho: más alto para que se vea la separación (svh: estable con la barra del navegador). */
+  .hero {
+    height: 320svh;
+  }
+}
 .hero-stage {
   position: sticky;
   top: 0;
@@ -767,8 +779,9 @@ body::after {
   border-radius: 28px;
   overflow: hidden;
   background: var(--surface);
-  transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(var(--s));
+  /* El transform lo pinta sitio.ts cuadro a cuadro (paintHero). */
   will-change: transform;
+  backface-visibility: hidden;
   pointer-events: auto;
   cursor: pointer;
   border: 0;
@@ -796,11 +809,11 @@ body::after {
   gap: 8px;
   padding: 10px 12px;
   border-radius: 16px;
-  background: color-mix(in srgb, #000 70%, transparent);
-  backdrop-filter: blur(6px);
+  /* Sin backdrop-filter: el desenfoque se redibujaba en cada cuadro y trababa la animación. */
+  background: color-mix(in srgb, #000 78%, transparent);
   color: #fff;
-  opacity: var(--lbl, 0);
-  transform: translateY(calc((1 - var(--lbl, 0)) * 10px));
+  opacity: 0;
+  will-change: opacity, transform;
 }
 .hcard-label b {
   font-family: var(--font-display);
@@ -828,7 +841,9 @@ body::after {
 .strip-track {
   display: flex;
   width: max-content;
-  animation: marquee 28s linear infinite;
+  animation: marquee var(--strip-dur, 60s) linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 .strip:hover .strip-track {
   animation-play-state: paused;
@@ -850,8 +865,11 @@ body::after {
   font-size: 14px;
 }
 @keyframes marquee {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
   to {
-    transform: translateX(-50%);
+    transform: translate3d(-50%, 0, 0);
   }
 }
 
@@ -1543,10 +1561,20 @@ body::after {
   opacity: var(--smoke);
   mix-blend-mode: screen;
   animation: drift 24s ease-in-out infinite alternate;
+  will-change: transform;
+  backface-visibility: hidden;
+  transform: translate3d(0, 0, 0);
 }
 @keyframes drift {
   to {
-    transform: scale(1.15) translateX(-3%);
+    transform: translate3d(-3%, 0, 0) scale(1.15);
+  }
+}
+@media (max-width: 760px) {
+  .final-smoke,
+  .intro-smoke {
+    mix-blend-mode: normal;
+    opacity: calc(var(--smoke) * 0.7);
   }
 }
 .final-in {

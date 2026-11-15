@@ -206,11 +206,12 @@ function layout(): Layout {
   const vh = innerHeight;
   if (vw < 760)
     return {
+      // Juntas y asomadas sobre la barra inferior para que se vea el arranque de la animación.
       start: [
-        [0, 0.38, -10],
-        [0, 0.38, -3],
-        [0, 0.38, 4],
-        [0, 0.38, 11],
+        [0, 0.33, -10],
+        [0, 0.33, -3],
+        [0, 0.33, 4],
+        [0, 0.33, 11],
       ],
       end: [
         [-0.235, -0.11, -3],
@@ -244,30 +245,74 @@ function layout(): Layout {
 }
 let lay = layout();
 const ease = (x: number) => 1 - Math.pow(1 - x, 3);
-function updateHero() {
-  if (!hero) return;
+const easeInOut = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+/** Progreso objetivo según el desplazamiento (0 = juntas, 1 = separadas). */
+function heroTarget(): number {
+  if (!hero) return 0;
   const rect = hero.getBoundingClientRect();
   const total = hero.offsetHeight - innerHeight;
-  const raw = Math.min(1, Math.max(0, -rect.top / (total * 0.7)));
-  const progress = reduced ? 1 : ease(raw);
+  // En celular se usa casi todo el recorrido (un deslizamiento avanza mucho); en escritorio, el 70 %.
+  const span = lay.vw < 760 ? 0.9 : 0.7;
+  const raw = Math.min(1, Math.max(0, -rect.top / (total * span)));
+  return reduced ? 1 : lay.vw < 760 ? easeInOut(raw) : ease(raw);
+}
+const heroLabels = heroCards.map((card) => card.querySelector<HTMLElement>('.hcard-label'));
+let heroShown = -1;
+/** Pinta un progreso: transform directo en cada tarjeta (sin variables CSS por cuadro). */
+function paintHero(progress: number) {
+  if (!hero || Math.abs(progress - heroShown) < 0.0005) return;
+  heroShown = progress;
   hero.style.setProperty('--p', progress.toFixed(3));
   hero.classList.toggle('is-spread', progress > 0.55);
+  const lbl = Math.max(0, (progress - 0.55) / 0.45);
   heroCards.forEach((card, i) => {
     const from = lay.start[i];
     const to = lay.end[i];
     if (!from || !to) return;
     const [ax = 0, ay = 0, ar = 0] = from;
     const [bx = 0, by = 0, br = 0] = to;
-    card.style.setProperty('--x', `${((ax + (bx - ax) * progress) * lay.vw).toFixed(1)}px`);
-    card.style.setProperty('--y', `${((ay + (by - ay) * progress) * lay.vh).toFixed(1)}px`);
-    card.style.setProperty('--r', `${(ar + (br - ar) * progress).toFixed(2)}deg`);
-    card.style.setProperty('--s', (lay.s0 + (lay.s1 - lay.s0) * progress).toFixed(3));
-    card.style.setProperty('--lbl', Math.max(0, (progress - 0.55) / 0.45).toFixed(2));
+    const x = (ax + (bx - ax) * progress) * lay.vw;
+    const y = (ay + (by - ay) * progress) * lay.vh;
+    const r = ar + (br - ar) * progress;
+    const sc = lay.s0 + (lay.s1 - lay.s0) * progress;
+    card.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) rotate(${r.toFixed(2)}deg) scale(${sc.toFixed(3)})`;
+    const label = heroLabels[i];
+    if (label) {
+      label.style.opacity = lbl.toFixed(2);
+      label.style.transform = `translate3d(0, ${((1 - lbl) * 10).toFixed(1)}px, 0)`;
+    }
   });
 }
+// Suavizado: el progreso persigue al objetivo cuadro a cuadro, así la rueda del mouse (que avanza a
+// saltos) no se ve a tirones. Se detiene solo al llegar.
+let heroCurrent = 0;
+let heroLoop = 0;
+function heroFrame() {
+  const target = heroTarget();
+  heroCurrent += (target - heroCurrent) * 0.16;
+  if (Math.abs(target - heroCurrent) < 0.001) heroCurrent = target;
+  paintHero(heroCurrent);
+  heroLoop = heroCurrent === target ? 0 : requestAnimationFrame(heroFrame);
+}
+function updateHero(instant = false) {
+  if (!hero) return;
+  if (instant || reduced) {
+    heroCurrent = heroTarget();
+    heroShown = -1;
+    paintHero(heroCurrent);
+    return;
+  }
+  if (!heroLoop) heroLoop = requestAnimationFrame(heroFrame);
+}
+// En celular la barra del navegador aparece y desaparece al desplazarse y cambia el alto: solo se
+// recalcula si cambia el ancho (giro de pantalla), para que las tarjetas no salten.
+let lastWidth = innerWidth;
 addEventListener('resize', () => {
+  if (innerWidth === lastWidth && matchMedia('(pointer: coarse)').matches) return;
+  lastWidth = innerWidth;
   lay = layout();
-  updateHero();
+  updateHero(true);
+  sizeStrip();
 });
 if (!reduced) {
   const embers = qs('.hero-embers');
@@ -280,6 +325,15 @@ if (!reduced) {
     embers?.append(ember);
   }
 }
+
+/* ---------- Franja de novedades: velocidad constante (px/s) en cualquier pantalla ---------- */
+function sizeStrip() {
+  const track = qs<HTMLElement>('.strip-track');
+  if (!track) return;
+  const pxPerSecond = innerWidth < 760 ? 45 : 70;
+  track.style.setProperty('--strip-dur', `${Math.max(20, track.scrollWidth / 2 / pxPerSecond).toFixed(1)}s`);
+}
+sizeStrip();
 
 /* ---------- Encabezado y menú móvil ---------- */
 let lastY = scrollY;
@@ -1135,7 +1189,7 @@ const io = new IntersectionObserver(
 );
 qsa('.reveal').forEach((el) => io.observe(el));
 
-updateHero();
+updateHero(true);
 syncCount();
 void refreshAvailability();
 void renderTracker();
