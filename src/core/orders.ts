@@ -107,3 +107,26 @@ export function customerWhatsApp(phone: string, name: string, code: string, rest
   const text = `Hola ${name.split(' ')[0] ?? ''}, te escribimos de ${restaurant} por tu pedido ${code} 🔥`;
   return `https://wa.me/57${phone}?text=${encodeURIComponent(text)}`;
 }
+
+/** Ítem de un pedido con su plato (D40). */
+export interface NestableItem {
+  id?: string | null;
+  parent?: string | null;
+  position?: number | null;
+}
+/**
+ * Ordena los ítems de un pedido con cada adición justo debajo de su plato (D40). Los pedidos viejos
+ * (sin id ni padre) quedan como vienen.
+ */
+export function nestItems<T extends NestableItem>(items: T[]): Array<T & { isAddon: boolean }> {
+  const sorted = [...items].sort((left, right) => (left.position ?? 0) - (right.position ?? 0));
+  const ids = new Set(sorted.map((item) => item.id).filter(Boolean));
+  const out: Array<T & { isAddon: boolean }> = [];
+  for (const item of sorted) {
+    if (item.parent && ids.has(item.parent)) continue;
+    out.push({ ...item, isAddon: false });
+    if (item.id)
+      for (const child of sorted) if (child.parent === item.id) out.push({ ...child, isAddon: true });
+  }
+  return out;
+}

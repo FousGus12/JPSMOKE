@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { cartTotals, comboUpsell, type CartCoupon, type CartProduct } from './cart';
+import {
+  addLine,
+  attachAddon,
+  cartTotals,
+  changeQty,
+  comboUpsell,
+  normalizeCart,
+  orderItems,
+  type CartCoupon,
+  type CartProduct,
+} from './cart';
 
 const products: CartProduct[] = [
   { id: 'b1', price: 30000, comboPrice: 39000, available: true },
@@ -63,4 +73,77 @@ describe('comboUpsell', () => {
     }));
   it('nada que sugerir', () =>
     expect(comboUpsell([{ productId: 'b2', qty: 1, combo: false }], products)).toBeNull());
+});
+
+describe('adiciones ligadas a un plato (D40)', () => {
+  const keys = () => {
+    let count = 0;
+    return () => `k${++count}`;
+  };
+  it('3 hamburguesas + huevo a una: se separa una unidad y el huevo va a esa', () => {
+    const nk = keys();
+    let cart = addLine([], 'burger', false, nk);
+    cart = addLine(cart, 'burger', false, nk);
+    cart = addLine(cart, 'burger', false, nk);
+    expect(cart).toEqual([{ key: 'k1', productId: 'burger', qty: 3, combo: false }]);
+    cart = attachAddon(cart, 'huevo', 'k1', nk);
+    expect(cart).toEqual([
+      { key: 'k1', productId: 'burger', qty: 2, combo: false },
+      { key: 'k2', productId: 'burger', qty: 1, combo: false },
+      { key: 'k3', productId: 'huevo', qty: 1, combo: false, parent: 'k2' },
+    ]);
+    // Otra hamburguesa igual no se mezcla con la que lleva huevo.
+    cart = addLine(cart, 'burger', false, nk);
+    expect(cart[0]?.qty).toBe(3);
+    // Un segundo huevo a la misma suma cantidad.
+    cart = attachAddon(cart, 'huevo', 'k2', nk);
+    expect(cart.find((line) => line.key === 'k3')?.qty).toBe(2);
+  });
+  it('adición aparte: sin padre y se suma como cualquier producto', () => {
+    const nk = keys();
+    let cart = attachAddon([], 'papas', null, nk);
+    cart = attachAddon(cart, 'papas', null, nk);
+    expect(cart).toEqual([{ key: 'k1', productId: 'papas', qty: 2, combo: false }]);
+  });
+  it('quitar el plato quita sus adiciones', () => {
+    const nk = keys();
+    let cart = addLine([], 'burger', false, nk);
+    cart = attachAddon(cart, 'queso', 'k1', nk);
+    cart = changeQty(cart, 'k1', -1, nk);
+    expect(cart).toEqual([]);
+  });
+  it('sumar a un plato con adiciones agrega una unidad aparte, sin adiciones', () => {
+    const nk = keys();
+    let cart = addLine([], 'burger', true, nk);
+    cart = attachAddon(cart, 'queso', 'k1', nk);
+    cart = changeQty(cart, 'k1', 1, nk);
+    expect(cart).toEqual([
+      { key: 'k1', productId: 'burger', qty: 1, combo: true },
+      { key: 'k2', productId: 'queso', qty: 1, combo: false, parent: 'k1' },
+      { key: 'k3', productId: 'burger', qty: 1, combo: true },
+    ]);
+  });
+  it('carrito guardado antes de D40: recibe llaves y descarta adiciones huérfanas', () => {
+    const nk = keys();
+    expect(
+      normalizeCart(
+        [
+          { productId: 'burger', qty: 1, combo: false },
+          { productId: 'huevo', qty: 1, combo: false, parent: 'no-existe' },
+        ],
+        nk,
+      ),
+    ).toEqual([{ key: 'k1', productId: 'burger', qty: 1, combo: false }]);
+  });
+  it('ítems del pedido: llave y padre solo donde hay adiciones', () => {
+    const nk = keys();
+    let cart = addLine([], 'burger', false, nk);
+    cart = addLine(cart, 'papas', false, nk);
+    cart = attachAddon(cart, 'huevo', 'k1', nk);
+    expect(orderItems(cart)).toEqual([
+      { product_id: 'burger', qty: 1, combo: false, key: 'k1' },
+      { product_id: 'huevo', qty: 1, combo: false, key: 'k3', parent: 'k1' },
+      { product_id: 'papas', qty: 1, combo: false },
+    ]);
+  });
 });

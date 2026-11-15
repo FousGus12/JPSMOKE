@@ -1,6 +1,7 @@
 // Página de seguimiento (D21). Consulta la función seguir-pedido cada 15 s; solo estado y resumen.
 import type { ClientData } from '../lib/content';
 import { formatCop as money } from '../core/money';
+import { nestItems } from '../core/orders';
 import { ORDER_STEPS, stepIndex, stepName, type Fulfillment, type OrderStatus } from '../core/tracking';
 
 interface PublicOrder {
@@ -19,7 +20,14 @@ interface PublicOrder {
   coupon: string | null;
   gift: string | null;
   eta: string;
-  items: Array<{ name: string; qty: number; combo: boolean; unit: number }>;
+  items: Array<{
+    id?: string;
+    parent?: string | null;
+    name: string;
+    qty: number;
+    combo: boolean;
+    unit: number;
+  }>;
   events: Array<{ status: OrderStatus; at: string }>;
 }
 
@@ -161,7 +169,13 @@ function render(order: PublicOrder) {
           ).join('')}</ol></section>`
     }
     <section class="track-card"><h2>Tu pedido</h2><div class="track-lines">
-      ${order.items.map((item) => `<div><span>${item.qty} × ${esc(item.name)}${item.combo ? ' (combo)' : ''}</span><span>${money(item.unit * item.qty)}</span></div>`).join('')}
+      ${nestItems(order.items)
+        .map((item) =>
+          item.isAddon
+            ? `<div class="sum-addon"><span>+ ${item.qty} × ${esc(item.name)}</span><span>${money(item.unit * item.qty)}</span></div>`
+            : `<div><span>${item.qty} × ${esc(item.name)}${item.combo ? ' (combo)' : ''}</span><span>${money(item.unit * item.qty)}</span></div>`,
+        )
+        .join('')}
       ${pickup ? '' : `<div class="muted"><span>Domicilio</span><span>${order.delivery_fee ? money(order.delivery_fee) : 'Gratis'}</span></div>`}
       ${order.discount ? `<div class="muted"><span>Cupón ${esc(order.coupon)}</span><span>−${money(order.discount)}</span></div>` : ''}
       ${order.gift ? `<div class="muted"><span>🎁 ${esc(order.gift)}</span><span>$0</span></div>` : ''}

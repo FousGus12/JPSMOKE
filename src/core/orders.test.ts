@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { customerWhatsApp, formatPhone, groupBoard, isLate, nextStep, startOfBogotaDay } from './orders';
+import {
+  customerWhatsApp,
+  formatPhone,
+  groupBoard,
+  isLate,
+  nestItems,
+  nextStep,
+  startOfBogotaDay,
+} from './orders';
 
 const NOW = Date.parse('2026-11-01T20:00:00Z'); // 3:00 p. m. en Bogotá
 
@@ -39,5 +47,26 @@ describe('tablero', () => {
     expect(customerWhatsApp('3105551234', 'Ana María', 'JP-0001', 'JP Smoke')).toContain(
       'wa.me/573105551234',
     );
+  });
+});
+
+describe('nestItems (D40)', () => {
+  it('cada adición queda debajo de su plato', () => {
+    const items = [
+      { id: 'a', parent: null, position: 1, name: 'Burger' },
+      { id: 'b', parent: null, position: 2, name: 'Burger' },
+      { id: 'c', parent: 'b', position: 3, name: 'Huevo' },
+      { id: 'd', parent: null, position: 4, name: 'Papas' },
+    ];
+    expect(nestItems(items).map((item) => `${item.isAddon ? '+' : ''}${item.name}`)).toEqual([
+      'Burger',
+      'Burger',
+      '+Huevo',
+      'Papas',
+    ]);
+  });
+  it('pedidos viejos sin id ni padre quedan iguales', () => {
+    const old: Array<{ name: string; id?: string }> = [{ name: 'A' }, { name: 'B' }];
+    expect(nestItems(old).map((item) => item.name)).toEqual(['A', 'B']);
   });
 });

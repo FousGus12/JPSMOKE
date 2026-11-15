@@ -85,14 +85,14 @@ isOneToOne: false
                   ]
                 },"categories": {
                   Row: {
-                    "emoji": string | null,"id": string,"name": string,"note": string | null,"position": number,"restaurant_id": string,"slug": string,"visible": boolean
+                    "emoji": string | null,"id": string,"is_addons": boolean,"name": string,"note": string | null,"position": number,"restaurant_id": string,"slug": string,"visible": boolean
                   }
                   ComputedFields: never
                   Insert: {
-                    "emoji"?: string | null,"id"?: string,"name": string,"note"?: string | null,"position"?: number,"restaurant_id": string,"slug": string,"visible"?: boolean
+                    "emoji"?: string | null,"id"?: string,"is_addons"?: boolean,"name": string,"note"?: string | null,"position"?: number,"restaurant_id": string,"slug": string,"visible"?: boolean
                   }
                   Update: {
-                    "emoji"?: string | null,"id"?: string,"name"?: string,"note"?: string | null,"position"?: number,"restaurant_id"?: string,"slug"?: string,"visible"?: boolean
+                    "emoji"?: string | null,"id"?: string,"is_addons"?: boolean,"name"?: string,"note"?: string | null,"position"?: number,"restaurant_id"?: string,"slug"?: string,"visible"?: boolean
                   }
                   Relationships: [
                     {
@@ -269,14 +269,14 @@ isOneToOne: false
                   ]
                 },"order_items": {
                   Row: {
-                    "combo": boolean,"id": string,"name": string,"order_id": string,"product_id": string | null,"qty": number,"restaurant_id": string,"unit_price": number
+                    "combo": boolean,"id": string,"name": string,"order_id": string,"parent_item_id": string | null,"position": number,"product_id": string | null,"qty": number,"restaurant_id": string,"unit_price": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "combo"?: boolean,"id"?: string,"name": string,"order_id": string,"product_id"?: string | null,"qty": number,"restaurant_id": string,"unit_price": number
+                    "combo"?: boolean,"id"?: string,"name": string,"order_id": string,"parent_item_id"?: string | null,"position"?: number,"product_id"?: string | null,"qty": number,"restaurant_id": string,"unit_price": number
                   }
                   Update: {
-                    "combo"?: boolean,"id"?: string,"name"?: string,"order_id"?: string,"product_id"?: string | null,"qty"?: number,"restaurant_id"?: string,"unit_price"?: number
+                    "combo"?: boolean,"id"?: string,"name"?: string,"order_id"?: string,"parent_item_id"?: string | null,"position"?: number,"product_id"?: string | null,"qty"?: number,"restaurant_id"?: string,"unit_price"?: number
                   }
                   Relationships: [
                     {
@@ -284,6 +284,12 @@ isOneToOne: false
       columns: ["order_id"]
 isOneToOne: false
       referencedRelation: "orders"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "order_items_parent_item_id_fkey"
+      columns: ["parent_item_id"]
+isOneToOne: false
+      referencedRelation: "order_items"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "order_items_product_id_fkey"

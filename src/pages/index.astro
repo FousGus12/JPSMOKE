@@ -12,8 +12,10 @@ const site = await loadSiteData();
 const on = (key: string) => site.sections[key] !== false;
 const heroProducts = site.products.filter((product) => product.hero && product.image).slice(0, 4);
 const featured = site.products.filter((product) => product.featured);
-const extras = site.categories.find((category) => category.slug === 'adicionales');
-const dishes = site.products.filter((product) => product.categoryId !== extras?.id).length;
+const addonCats = new Set(
+  site.categories.filter((category) => category.isAddons).map((category) => category.id),
+);
+const dishes = site.products.filter((product) => !addonCats.has(product.categoryId)).length;
 const extrasCount = site.products.length - dishes;
 const stripEvents = site.events.filter((event) => event.showStrip);
 const sectionEvents = site.events.filter((event) => event.showSection);
@@ -324,7 +326,7 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
       <div class="wrap" id="carta-list">
         {site.categories.map((category) => {
           const items = site.products.filter((product) => product.categoryId === category.id);
-          const isExtra = category.id === extras?.id;
+          const isExtra = category.isAddons;
           return (
             items.length > 0 && (
               <div class="cat-block" id={`cat-${category.slug}`} data-cat-block={category.slug}>

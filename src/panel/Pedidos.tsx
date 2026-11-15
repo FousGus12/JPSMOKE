@@ -11,6 +11,7 @@ import {
   isLate,
   minutesSince,
   nextStep,
+  nestItems,
 } from '../core/orders';
 import { setStatus, type PanelOrder } from './data';
 import { Drawer, useToast } from './ui';
@@ -21,6 +22,10 @@ const time = (iso: string) =>
     minute: '2-digit',
     timeZone: 'America/Bogota',
   });
+
+/** Ítems con cada adición debajo de su plato (D40). */
+const itemsOf = (order: PanelOrder) =>
+  nestItems(order.order_items.map((item) => ({ ...item, parent: item.parent_item_id })));
 
 export function Pedidos({
   orders,
@@ -74,7 +79,9 @@ export function Pedidos({
                     {order.fulfillment === 'recoger' ? 'en el local' : order.barrio || order.zone_name}
                   </p>
                   <p className="ocard-items">
-                    {order.order_items.map((item) => `${item.qty}× ${item.name}`).join(', ')}
+                    {itemsOf(order)
+                      .map((item) => `${item.isAddon ? '+ ' : ''}${item.qty}× ${item.name}`)
+                      .join(', ')}
                   </p>
                   <div className="ocard-foot">
                     <b>{money(order.total)}</b>
@@ -202,9 +209,10 @@ function OrderDetail({
       </dl>
       <div className="card">
         <div className="lines">
-          {order.order_items.map((item, i) => (
-            <div key={i}>
+          {itemsOf(order).map((item, i) => (
+            <div key={i} className={item.isAddon ? 'line-addon' : undefined}>
               <span>
+                {item.isAddon ? '+ ' : ''}
                 {item.qty} × {item.name}
                 {item.combo ? ' (combo)' : ''}
               </span>

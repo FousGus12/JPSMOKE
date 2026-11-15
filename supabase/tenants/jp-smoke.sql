@@ -23,6 +23,9 @@ insert into public.categories (restaurant_id, slug, name, emoji, note, position)
   ('00000000-0000-4000-8000-0000000000a1', 'bebidas', 'Bebidas', '🥤', null, 5),
   ('00000000-0000-4000-8000-0000000000a1', 'adicionales', 'Adicionales', '➕', 'Súmalos a cualquier plato', 6)
 on conflict (restaurant_id, slug) do nothing;
+-- Adiciones ligadas a un plato (D40).
+update public.categories set is_addons = true
+where restaurant_id = '00000000-0000-4000-8000-0000000000a1' and slug = 'adicionales';
 
 insert into public.products (restaurant_id, category_id, slug, name, badge, description, price, combo_price, image_path, available, featured, hero, position)
 select '00000000-0000-4000-8000-0000000000a1', c.id, v.slug, v.name, v.badge, v.description, v.price, v.combo, v.img, v.available, v.featured, v.hero, v.pos

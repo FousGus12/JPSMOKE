@@ -24,12 +24,20 @@ export interface PanelOrder {
   gift: string | null;
   cancel_reason: string | null;
   created_at: string;
-  order_items: Array<{ name: string; qty: number; combo: boolean; unit_price: number }>;
+  order_items: Array<{
+    id: string;
+    parent_item_id: string | null;
+    position: number;
+    name: string;
+    qty: number;
+    combo: boolean;
+    unit_price: number;
+  }>;
   order_events: Array<{ status: OrderStatus; at: string }>;
 }
 
 const ORDER_COLUMNS =
-  'id, code, status, channel, fulfillment, customer_name, phone, address, barrio, zone_name, notes, payment_label, cash_with, subtotal, discount, delivery_fee, total, coupon_code, gift, cancel_reason, created_at, order_items(name, qty, combo, unit_price), order_events(status, at)';
+  'id, code, status, channel, fulfillment, customer_name, phone, address, barrio, zone_name, notes, payment_label, cash_with, subtotal, discount, delivery_fee, total, coupon_code, gift, cancel_reason, created_at, order_items(id, parent_item_id, position, name, qty, combo, unit_price), order_events(status, at)';
 
 /** Pedidos de las últimas 36 horas (abiertos de ayer + todo lo de hoy). */
 export async function loadOrders(): Promise<PanelOrder[]> {

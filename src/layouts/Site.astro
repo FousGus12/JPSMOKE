@@ -267,6 +267,23 @@ const year = new Date().getFullYear();
     </div>
   </div>
 
+  <div class="modal" id="addon-pick" hidden role="dialog" aria-modal="true" aria-labelledby="addon-title">
+    <div class="modal-card">
+      <header class="modal-head">
+        <h2 class="display h-md" id="addon-title">
+          ¿A cuál le agregas?
+        </h2>
+        <button class="round-btn" type="button" data-close-modal aria-label="Cerrar">
+          ✕
+        </button>
+      </header>
+      <div class="modal-body">
+        <p class="muted addon-help">Esto es lo que llevas en el pedido. Elige el plato.</p>
+        <div class="addon-list" id="addon-list"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal" id="track" hidden role="dialog" aria-modal="true" aria-labelledby="t-title">
     <div class="modal-card">
       <header class="modal-head">

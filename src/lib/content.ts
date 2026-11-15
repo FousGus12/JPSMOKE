@@ -22,6 +22,8 @@ export interface Category {
   name: string;
   emoji: string | null;
   note: string | null;
+  /** Categoría de adiciones (D40). */
+  isAddons: boolean;
 }
 export interface Zone {
   id: string;
@@ -134,7 +136,7 @@ export async function loadSiteData(): Promise<SiteData> {
       .single(),
     supabase
       .from('categories')
-      .select('id, slug, name, emoji, note')
+      .select('id, slug, name, emoji, note, is_addons')
       .eq('restaurant_id', rid)
       .order('position'),
     supabase
@@ -193,7 +195,10 @@ export async function loadSiteData(): Promise<SiteData> {
     deliveryEta: st.delivery_eta,
     introMode: st.intro_mode,
     acceptingOrders: st.accepting_orders,
-    categories: must(categories, 'las categorías'),
+    categories: must(categories, 'las categorías').map(({ is_addons, ...category }) => ({
+      ...category,
+      isAddons: is_addons,
+    })),
     products: must(products, 'la carta').map((row) => ({
       id: row.id,
       categoryId: row.category_id,
@@ -256,13 +261,14 @@ export function clientData(site: SiteData, env = readPublicEnv()) {
     acceptingOrders: site.acceptingOrders,
     pickupEnabled: site.store.pickup,
     storeAddress: site.store.address,
-    products: site.products.map(({ id, name, price, comboPrice, image, available }) => ({
+    products: site.products.map(({ id, name, price, comboPrice, image, available, categoryId }) => ({
       id,
       name,
       price,
       comboPrice,
       image,
       available,
+      addon: site.categories.some((category) => category.id === categoryId && category.isAddons),
     })),
     zones: site.zones.filter((zone) => zone.active),
     payments: site.payments,

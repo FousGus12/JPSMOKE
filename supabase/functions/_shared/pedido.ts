@@ -48,6 +48,15 @@ export const pedidoSchema = z
           product_id: z.uuid(),
           qty: z.number().int().min(1).max(30),
           combo: z.boolean().default(false),
+          // D40: adición ligada a un plato del mismo pedido (opcional; la base valida padre e hijo).
+          key: z
+            .string()
+            .regex(/^[A-Za-z0-9-]{1,40}$/)
+            .optional(),
+          parent: z
+            .string()
+            .regex(/^[A-Za-z0-9-]{1,40}$/)
+            .optional(),
         }),
       )
       .min(1)

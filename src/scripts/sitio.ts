@@ -1,7 +1,19 @@
 // Comportamiento del sitio público (F4). Portado del mockup aprobado (mockup/assets/sitio.js).
 // El total que vale lo calcula el servidor (place_order); aquí solo se muestra la vista previa (src/core/cart.ts).
 import type { ClientData } from '../lib/content';
-import { cartTotals, comboUpsell, type CartCoupon, type CartLine, type CartProduct } from '../core/cart';
+import {
+  addLine,
+  attachAddon,
+  cartTotals,
+  changeQty,
+  childrenOf,
+  comboUpsell,
+  normalizeCart,
+  orderItems,
+  type CartCoupon,
+  type CartLine,
+  type CartProduct,
+} from '../core/cart';
 import { formatCop as money } from '../core/money';
 import { normalizeColombianMobile } from '../core/phone';
 import {
@@ -53,7 +65,11 @@ let products: CartProduct[] = data.products.map(({ id, price, comboPrice, availa
   available,
 }));
 const info = new Map(data.products.map((product) => [product.id, product]));
-let cart = store.get<CartLine[]>('carrito', []).filter((line) => info.has(line.productId));
+const newKey = () => crypto.randomUUID();
+let cart = normalizeCart(
+  store.get<CartLine[]>('carrito', []).filter((line) => info.has(line.productId)),
+  newKey,
+);
 let coupon: CartCoupon | null = null;
 let couponCode = '';
 const choice = new Map<string, boolean>();
@@ -62,7 +78,10 @@ function toast(message: string) {
   const el = document.createElement('div');
   el.className = 'toast';
   el.textContent = message;
-  qs('#toasts')?.append(el);
+  const box = qs('#toasts');
+  box?.append(el);
+  // Máximo 2 a la vez: si no, al agregar varias cosas seguidas tapan la pantalla.
+  while (box && box.children.length > 2) box.firstElementChild?.remove();
   setTimeout(() => el.remove(), 3200);
 }
 
@@ -119,10 +138,13 @@ async function applyStockStatus() {
       btn.title = 'El combo se agotó: pídela sola';
     });
   }
-  cart = cart.filter(
-    (line) =>
-      products.some((product) => product.id === line.productId && product.available) &&
-      !(line.combo && comboOut.has(line.productId)),
+  cart = normalizeCart(
+    cart.filter(
+      (line) =>
+        products.some((product) => product.id === line.productId && product.available) &&
+        !(line.combo && comboOut.has(line.productId)),
+    ),
+    newKey,
   );
 }
 
@@ -186,8 +208,9 @@ async function refreshAvailability() {
       );
       qsa<HTMLButtonElement>(`[data-add="${row.id}"]`).forEach((btn) => (btn.disabled = !row.available));
     }
-    cart = cart.filter((line) =>
-      products.some((product) => product.id === line.productId && product.available),
+    cart = normalizeCart(
+      cart.filter((line) => products.some((product) => product.id === line.productId && product.available)),
+      newKey,
     );
     await applyStockStatus();
     syncCount();
@@ -454,15 +477,70 @@ function addToCart(id: string, combo: boolean, from: Element | null) {
     toast('El combo se agotó por hoy; puedes pedirla sola');
     return;
   }
+  // D40: una adición pregunta a cuál plato del pedido va.
+  if (info.get(id)?.addon && cart.some((line) => !line.parent && !info.get(line.productId)?.addon)) {
+    openAddonPicker(id, from);
+    return;
+  }
   const asCombo = combo && product.comboPrice !== null;
-  const line = cart.find((item) => item.productId === id && item.combo === asCombo);
-  if (line) line.qty += 1;
-  else cart.push({ productId: id, qty: 1, combo: asCombo });
+  cart = addLine(cart, id, asCombo, newKey);
   saveCart();
   flyTo(from);
   toast(`${info.get(id)?.name ?? 'Producto'}${asCombo ? ' en combo' : ''} agregado 🔥`);
   if (!qs('#cart')?.hidden) renderCart();
 }
+
+/* ---------- Adiciones: ¿a cuál plato? (D40) ---------- */
+let pendingAddon: { id: string; from: Element | null } | null = null;
+function lineLabel(line: CartLine): string {
+  const name = info.get(line.productId)?.name ?? 'Producto';
+  const extras = childrenOf(cart, line.key)
+    .map((child) => `${child.qty > 1 ? `${child.qty}× ` : ''}${info.get(child.productId)?.name ?? ''}`)
+    .join(', ');
+  return `${name}${line.combo ? ' (combo)' : ''}${extras ? ` · ya lleva: ${extras}` : ''}`;
+}
+function openAddonPicker(id: string, from: Element | null) {
+  const modal = qs('#addon-pick');
+  const list = qs('#addon-list');
+  if (!modal || !list) return;
+  pendingAddon = { id, from };
+  const title = qs('#addon-title');
+  if (title) title.textContent = `¿A cuál le agregas ${info.get(id)?.name ?? 'la adición'}?`;
+  const dishes = cart.filter((line) => !line.parent && !info.get(line.productId)?.addon);
+  list.innerHTML =
+    dishes
+      .map((line) => {
+        const meta = info.get(line.productId);
+        const many =
+          line.qty > 1 ? `<small>Tienes ${line.qty}: se la agregamos a 1 de las ${line.qty}</small>` : '';
+        return `<button type="button" class="addon-opt" data-addon-to="${esc(line.key)}">${meta?.image ? `<img src="${esc(meta.image)}" alt="">` : '<span class="ph"></span>'}<span><b>${esc(lineLabel(line))}</b>${many}</span></button>`;
+      })
+      .join('') +
+    `<button type="button" class="addon-opt addon-apart" data-addon-to=""><span class="ph">＋</span><span><b>Aparte</b><small>No va con ningún plato</small></span></button>`;
+  returnFocus = document.activeElement as HTMLElement | null;
+  modal.hidden = false;
+  lockScroll(true);
+  qs<HTMLButtonElement>('#addon-list .addon-opt')?.focus();
+}
+qs('#addon-list')?.addEventListener('click', (event) => {
+  const opt = (event.target as HTMLElement).closest<HTMLElement>('[data-addon-to]');
+  if (!opt || !pendingAddon) return;
+  const parentKey = opt.dataset.addonTo || null;
+  const { id, from } = pendingAddon;
+  pendingAddon = null;
+  const parent = parentKey ? cart.find((line) => line.key === parentKey) : null;
+  cart = attachAddon(cart, id, parentKey, newKey);
+  saveCart();
+  closeModals();
+  flyTo(from);
+  const name = info.get(id)?.name ?? 'Adición';
+  toast(
+    parent
+      ? `${name} agregado a ${info.get(parent.productId)?.name ?? 'tu plato'} 🔥`
+      : `${name} agregado aparte 🔥`,
+  );
+  if (!qs('#cart')?.hidden) renderCart();
+});
 
 function applyCoupon(code: string, open: boolean) {
   const clean = code.trim().toUpperCase();
@@ -512,14 +590,27 @@ function renderCart() {
     return;
   }
   body.innerHTML = cart
-    .map((line, i) => {
+    .map((line) => {
       const meta = info.get(line.productId);
       const product = byId(line.productId);
       if (!meta || !product) return '';
       const unit = line.combo && product.comboPrice !== null ? product.comboPrice : product.price;
+      const key = esc(line.key);
+      // D40: la adición se ve debajo de su plato.
+      if (line.parent)
+        return `<div class="line line-addon"><span class="addon-mark" aria-hidden="true">＋</span>
+        <div><h4>${esc(meta.name)}</h4><small>Para ${esc(info.get(cart.find((item) => item.key === line.parent)?.productId ?? '')?.name)} · ${money(unit)}</small></div>
+        <div class="qty"><button type="button" data-q="${key}" data-d="-1" aria-label="Quitar uno">−</button><span>${line.qty}</span><button type="button" data-q="${key}" data-d="1" aria-label="Agregar uno">＋</button></div></div>`;
+      const label = line.combo
+        ? 'Combo · papas + gaseosa'
+        : product.comboPrice !== null
+          ? 'Sola'
+          : meta.addon
+            ? 'Aparte'
+            : '';
       return `<div class="line">${meta.image ? `<img src="${esc(meta.image)}" alt="">` : '<span class="ph"></span>'}
-        <div><h4>${esc(meta.name)}</h4><small>${line.combo ? 'Combo · papas + gaseosa' : product.comboPrice !== null ? 'Sola' : ''} · ${money(unit)}</small></div>
-        <div class="qty"><button type="button" data-q="${i}" data-d="-1" aria-label="Quitar uno">−</button><span>${line.qty}</span><button type="button" data-q="${i}" data-d="1" aria-label="Agregar uno">＋</button></div></div>`;
+        <div><h4>${esc(meta.name)}</h4><small>${label}${label ? ' · ' : ''}${money(unit)}</small></div>
+        <div class="qty"><button type="button" data-q="${key}" data-d="-1" aria-label="Quitar uno">−</button><span>${line.qty}</span><button type="button" data-q="${key}" data-d="1" aria-label="Agregar uno">＋</button></div></div>`;
     })
     .join('');
   const upsell = comboUpsell(cart, products);
@@ -555,11 +646,7 @@ qs('#cart-body')?.addEventListener('click', (event) => {
   const target = event.target as HTMLElement;
   const qtyBtn = target.closest<HTMLElement>('[data-q]');
   if (qtyBtn) {
-    const index = Number(qtyBtn.dataset.q);
-    const line = cart[index];
-    if (!line) return;
-    line.qty += Number(qtyBtn.dataset.d);
-    if (line.qty <= 0) cart.splice(index, 1);
+    cart = changeQty(cart, qtyBtn.dataset.q ?? '', Number(qtyBtn.dataset.d), newKey);
     saveCart();
     renderCart();
     return;
@@ -567,9 +654,10 @@ qs('#cart-body')?.addEventListener('click', (event) => {
   const up = target.closest<HTMLElement>('[data-upsell]');
   if (up) {
     const id = up.dataset.upsell ?? '';
-    const single = cart.find((line) => line.productId === id && !line.combo);
-    const twin = cart.find((line) => line.productId === id && line.combo);
-    if (single && twin) {
+    const single = cart.find((line) => line.productId === id && !line.combo && !line.parent);
+    const plain = (line: CartLine) => childrenOf(cart, line.key).length === 0;
+    const twin = cart.find((line) => line.productId === id && line.combo && !line.parent && plain(line));
+    if (single && twin && plain(single)) {
       twin.qty += single.qty;
       cart.splice(cart.indexOf(single), 1);
     } else if (single) single.combo = true;
@@ -809,7 +897,9 @@ function stepConfirm(errorMsg = '') {
           ? product.comboPrice
           : product.price
         : 0;
-      return `<div><span>${line.qty} × ${esc(info.get(line.productId)?.name)}${line.combo ? ' (combo)' : ''}</span><span>${money(unit * line.qty)}</span></div>`;
+      return line.parent
+        ? `<div class="sum-addon"><span>+ ${line.qty} × ${esc(info.get(line.productId)?.name)}</span><span>${money(unit * line.qty)}</span></div>`
+        : `<div><span>${line.qty} × ${esc(info.get(line.productId)?.name)}${line.combo ? ' (combo)' : ''}</span><span>${money(unit * line.qty)}</span></div>`;
     })
     .join('');
   body.innerHTML = `
@@ -865,7 +955,7 @@ async function placeOrder() {
       payment_code: form.pay,
       cash_with: form.cash || undefined,
       coupon: couponCode || undefined,
-      items: cart.map((line) => ({ product_id: line.productId, qty: line.qty, combo: line.combo })),
+      items: orderItems(cart),
       acepta_datos: form.ok,
       promos: form.promos,
       elapsed_ms: Date.now() - startedAt,
