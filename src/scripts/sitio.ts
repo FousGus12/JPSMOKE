@@ -273,9 +273,9 @@ function paintHero(progress: number) {
     const [bx = 0, by = 0, br = 0] = to;
     const x = (ax + (bx - ax) * progress) * lay.vw;
     const y = (ay + (by - ay) * progress) * lay.vh;
-    const r = ar + (br - ar) * progress;
+    const rot = ar + (br - ar) * progress;
     const sc = lay.s0 + (lay.s1 - lay.s0) * progress;
-    card.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) rotate(${r.toFixed(2)}deg) scale(${sc.toFixed(3)})`;
+    card.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) rotate(${rot.toFixed(2)}deg) scale(${sc.toFixed(3)})`;
     const label = heroLabels[i];
     if (label) {
       label.style.opacity = lbl.toFixed(2);
