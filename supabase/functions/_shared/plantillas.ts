@@ -1,7 +1,8 @@
 // Plantillas de WhatsApp (F9, D32). Los nombres y el orden de los parámetros se registran igual en Meta.
 // Sin dependencias: las usan la función whatsapp (Deno) y el panel (vista previa).
 
-export type WaKind = 'pedido_recibido' | 'aviso_negocio' | 'en_camino' | 'informe_semanal' | 'stock_bajo';
+export type WaKind =
+  'pedido_recibido' | 'aviso_negocio' | 'en_camino' | 'informe_semanal' | 'stock_bajo' | 'pedido_cancelado';
 
 export interface WaOrder {
   code: string;
@@ -12,6 +13,8 @@ export interface WaOrder {
   items: number;
   zone: string;
   channel: string;
+  /** Motivo público de la anulación (D59); el interno nunca llega aquí. */
+  cancel_note?: string | null;
 }
 export interface WaReport {
   from: string;
@@ -53,6 +56,16 @@ export function safeName(name: string | null | undefined): string {
       .trim()
       .split(/\s+/)[0] ?? '';
   return clean.slice(0, 30) || 'cliente';
+}
+
+/** Texto libre para un parámetro de Meta: sin saltos de línea ni tabulaciones ni espacios repetidos; máximo 160. */
+export function safeText(text: string | null | undefined, max = 160): string {
+  return (text ?? '')
+    .normalize('NFC')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+    .slice(0, max);
 }
 
 function toWhatsApp(phone: string | null | undefined): string | null {
@@ -108,6 +121,19 @@ export function buildMessage(message: WaMessage): Built {
         template: 'en_camino',
         params,
         preview: `🛵 ${params[0]}, tu pedido ${params[1]} de ${message.restaurant} va en camino. Ten listo el pago.`,
+      };
+    }
+    case 'pedido_cancelado': {
+      const to = toWhatsApp(order?.phone);
+      const note = safeText(order?.cancel_note);
+      if (!order || !to) return { skip: 'sin_celular' };
+      if (!note) return { skip: 'sin_motivo' };
+      const params = [safeName(order.name), order.code, note];
+      return {
+        to,
+        template: 'pedido_cancelado',
+        params,
+        preview: `${params[0]}, anulamos tu pedido ${params[1]} de ${message.restaurant}. Motivo: ${params[2]}. Si tienes dudas, escríbenos por WhatsApp.`,
       };
     }
     case 'informe_semanal': {

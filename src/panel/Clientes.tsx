@@ -1,7 +1,9 @@
-// Clientes (D41): búsqueda, historial resumido y etiquetas. Solo administración (la base lo exige).
+// Clientes (D41, D65): búsqueda, historial, etiquetas y exportación de promociones. Solo administración (la base lo exige).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatCop as money } from '../core/money';
-import { loadCustomers, updateCustomer, type CustomerRow } from './customers-data';
+import { toCsv } from '../core/sales';
+import { promoExportFileName, promoExportRows } from '../core/security';
+import { exportPromoCustomers, loadCustomers, updateCustomer, type CustomerRow } from './customers-data';
 import { Modal, useToast } from './ui';
 
 const dateFmt = new Intl.DateTimeFormat('es-CO', { timeZone: 'America/Bogota', dateStyle: 'medium' });
@@ -14,6 +16,7 @@ export function Clientes() {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [editing, setEditing] = useState<CustomerRow | null>(null);
+  const [exporting, setExporting] = useState(false);
   const seq = useRef(0);
 
   const fetchPage = useCallback(async (term: string, offset: number) => {
@@ -57,6 +60,11 @@ export function Clientes() {
       <div className="card-head">
         <h2>Clientes</h2>
         <span className="muted">{total} en total</span>
+      </div>
+      <div className="cli-export">
+        <button className="btn btn-soft" type="button" onClick={() => setExporting(true)}>
+          Exportar clientes con autorización de promociones
+        </button>
       </div>
       <div className="field">
         <label htmlFor="cli-buscar">Buscar por nombre o celular</label>
@@ -130,6 +138,7 @@ export function Clientes() {
         </button>
       ) : null}
       {editing ? <NotesModal row={editing} onClose={() => setEditing(null)} onSave={patch} /> : null}
+      {exporting ? <ExportModal onClose={() => setExporting(false)} /> : null}
     </section>
   );
 }
@@ -177,6 +186,61 @@ function NotesModal({
           }}
         >
           Guardar
+        </button>
+        <button className="btn btn-soft" type="button" onClick={onClose}>
+          Cancelar
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+/** D65: confirmación con el uso permitido (Ley 1581) antes de descargar; la base deja la exportación en auditoría. */
+function ExportModal({ onClose }: { onClose: () => void }) {
+  const toast = useToast();
+  const [working, setWorking] = useState(false);
+  async function download() {
+    setWorking(true);
+    try {
+      const rows = await exportPromoCustomers();
+      if (!rows.length) {
+        toast('Ningún cliente tiene autorización vigente de promociones. La consulta quedó en la auditoría.');
+        onClose();
+        return;
+      }
+      const blob = new Blob([`\ufeff${toCsv(promoExportRows(rows))}`], { type: 'text/csv;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = promoExportFileName();
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1_000);
+      toast(
+        `CSV descargado: ${rows.length} ${rows.length === 1 ? 'cliente' : 'clientes'}. Quedó en la auditoría.`,
+      );
+      onClose();
+    } catch (failure) {
+      toast(failure instanceof Error ? failure.message : 'No se pudo exportar.');
+    } finally {
+      setWorking(false);
+    }
+  }
+  return (
+    <Modal title="Exportar clientes con autorización de promociones" onClose={onClose}>
+      <p>
+        El archivo trae nombre, celular, fecha de autorización y número de pedidos de los clientes que
+        autorizaron recibir promociones y no la han retirado. Los bloqueados no salen.
+      </p>
+      <p className="note">
+        Úsalo <b>solo para enviar promociones de JP Smoke</b>, como autorizó cada cliente (Ley 1581 de 2012).
+        No lo compartas con terceros, no lo uses para otro fin y bórralo cuando termines. Si alguien pide que
+        no le escriban más, respétalo de inmediato.
+      </p>
+      <p className="muted">
+        Esta exportación queda en el registro de auditoría con tu nombre y el número de filas.
+      </p>
+      <div className="btn-row">
+        <button className="btn btn-primary" type="button" disabled={working} onClick={() => void download()}>
+          {working ? 'Exportando…' : 'Entiendo, descargar CSV'}
         </button>
         <button className="btn btn-soft" type="button" onClick={onClose}>
           Cancelar

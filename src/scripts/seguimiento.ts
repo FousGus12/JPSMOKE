@@ -3,7 +3,14 @@ import type { ClientData } from '../lib/content';
 import { formatCop as money } from '../core/money';
 import { nestItems } from '../core/orders';
 import { artKey, trackArt } from './seguimiento-arte';
-import { ORDER_STEPS, stepIndex, stepName, type Fulfillment, type OrderStatus } from '../core/tracking';
+import {
+  ORDER_STEPS,
+  cancelText,
+  stepIndex,
+  stepName,
+  type Fulfillment,
+  type OrderStatus,
+} from '../core/tracking';
 
 interface PublicOrder {
   code: string;
@@ -11,6 +18,8 @@ interface PublicOrder {
   fulfillment?: Fulfillment;
   created_at: string;
   cancel_reason: string | null;
+  /** Motivo público de la anulación (D59); el interno nunca llega. */
+  cancel_note?: string | null;
   address: string;
   barrio: string | null;
   payment: string;
@@ -20,7 +29,8 @@ interface PublicOrder {
   total: number;
   coupon: string | null;
   gift: string | null;
-  eta: string;
+  /** Hora estimada en texto, calculada en la base (D61). */
+  eta: string | null;
   items: Array<{
     id?: string;
     parent?: string | null;
@@ -168,8 +178,9 @@ function render(order: PublicOrder) {
       <div class="track-copy">
         <p class="code">Pedido ${esc(order.code)}</p>
         <h1 class="display track-status">${esc(label)}</h1>
-        <p>${cancelled ? 'Tu pedido fue cancelado. Si tienes dudas, escríbenos por WhatsApp.' : esc((pickup && PICKUP_HINT[order.status]) || HINT[order.status] || '')}</p>
-        ${!cancelled && !pickup && order.status !== 'entregado' ? `<p><b>Entrega estimada:</b> ${esc(order.eta)} desde las ${time(order.created_at)}</p>` : ''}
+        <p${cancelled ? ' class="track-cancel-note"' : ''}>${esc(cancelled ? cancelText(order.cancel_note) : (pickup && PICKUP_HINT[order.status]) || HINT[order.status] || '')}</p>
+        ${cancelled && order.cancel_note?.trim() ? '<p>Si tienes dudas, escríbenos por WhatsApp.</p>' : ''}
+        ${!cancelled && !pickup && order.status !== 'entregado' && order.eta ? `<p><b>Entrega estimada:</b> ${esc(order.eta)} desde las ${time(order.created_at)}</p>` : ''}
       </div>
     </section>
     ${

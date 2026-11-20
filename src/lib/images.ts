@@ -12,7 +12,6 @@ import type { ImageMetadata } from 'astro';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { fallbackWidth, photoHeight, photoWidths, type PhotoSize } from '../core/photo';
-
 /** Formatos en orden de preferencia. Si el build se vuelve lento, dejar solo 'webp' (D51). */
 const FORMATS = ['avif', 'webp'] as const;
 
@@ -105,6 +104,50 @@ export function responsivePhoto(
       return null;
     });
     cache.set(key, hit);
+  }
+  return hit;
+}
+
+/** Miniatura para el navegador (carrito y selector de adiciones, D56): WebP cuadrado de 96 y 192 px. */
+export interface Thumb {
+  src: string;
+  srcset: string;
+}
+const THUMB_WIDTHS = [96, 192] as const;
+
+async function buildThumb(url: string): Promise<Thumb | null> {
+  const source = await describe(url);
+  if (!source) return null;
+  const original = source.kind === 'local' ? source.meta : source.size;
+  const widths = photoWidths(original, THUMB_WIDTHS, 1);
+  if (widths.length === 0) return null;
+  const width = Math.min(...widths);
+  const result = await getImage({
+    src: source.kind === 'local' ? source.meta : source.url,
+    width,
+    height: width,
+    widths,
+    fit: 'cover',
+    format: 'webp',
+  });
+  if (result.src === url) return null; // remota no permitida: sin versiones
+  return { src: result.src, srcset: result.srcSet.attribute };
+}
+
+const thumbCache = new Map<string, Promise<Thumb | null>>();
+
+/** Miniatura de una foto de la carta; null si no se puede optimizar (el navegador usa la original). */
+export function thumbnail(url: string | null | undefined): Promise<Thumb | null> {
+  if (!url) return Promise.resolve(null);
+  let hit = thumbCache.get(url);
+  if (!hit) {
+    hit = buildThumb(url).catch((error: unknown) => {
+      console.warn(
+        `[images] sin miniatura para ${url}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    });
+    thumbCache.set(url, hit);
   }
   return hit;
 }

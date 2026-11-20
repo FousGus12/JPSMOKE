@@ -187,3 +187,76 @@ Deno.test('nombre con URL o salto de línea: datos inválidos (auditoría)', asy
   );
   assertEquals(ok.status, 201);
 });
+
+Deno.test('D58: pasa request_id y tiempos a la base', async () => {
+  const calls: Array<[string, Record<string, unknown>]> = [];
+  const request_id = '3f1d2c4b-5a6e-4f70-8a9b-0c1d2e3f4a5b';
+  await handle(post({ ...valid, request_id, fill_ms: 42000, checkout_ms: 15000 }), deps({}, calls));
+  const p = calls.find(([fn]) => fn === 'place_order')![1].p as Record<string, unknown>;
+  assertEquals([p.request_id, p.fill_ms, p.checkout_ms], [request_id, 42000, 15000]);
+});
+
+Deno.test('D58: request_id inválido o tiempos fuera de rango: datos inválidos', async () => {
+  assertEquals((await handle(post({ ...valid, request_id: 'no-es-uuid' }), deps())).status, 400);
+  assertEquals((await handle(post({ ...valid, fill_ms: -1 }), deps())).status, 400);
+  assertEquals((await handle(post({ ...valid, checkout_ms: 1.5 }), deps())).status, 400);
+});
+
+Deno.test('D58: reintento repetido responde igual que un pedido nuevo con el código existente', async () => {
+  const res = await handle(
+    post({ ...valid, request_id: '3f1d2c4b-5a6e-4f70-8a9b-0c1d2e3f4a5b' }),
+    deps({
+      rpc: (fn) =>
+        Promise.resolve(
+          fn === 'rate_hit'
+            ? { data: true, error: null }
+            : fn === 'place_order'
+              ? { data: { ok: true, code: 'JP-0007', total: 40000, repeated: true }, error: null }
+              : { data: null, error: null },
+        ),
+    }),
+  );
+  assertEquals(res.status, 201);
+  assertEquals(await res.json(), { ok: true, code: 'JP-0007', token: 'TOKEN-de-prueba-1234', total: 40000 });
+});
+
+Deno.test('D61: pedidos en pausa dicen a qué hora vuelven (hora de Bogotá)', async () => {
+  const res = await handle(
+    post(valid),
+    deps({
+      rpc: (fn) =>
+        Promise.resolve(
+          fn === 'rate_hit'
+            ? { data: true, error: null }
+            : fn === 'place_order'
+              ? {
+                  data: { ok: false, reason: 'cerrado', resumes_at: '2026-11-20T00:30:00+00:00' },
+                  error: null,
+                }
+              : { data: null, error: null },
+        ),
+    }),
+  );
+  assertEquals(res.status, 422);
+  const body = await res.json();
+  assertEquals(body.error, 'cerrado');
+  assertEquals(body.message, 'Pausamos los pedidos por unos minutos. Volvemos a las 19:30.');
+});
+
+Deno.test('cerrado sin pausa: mensaje de horario', async () => {
+  const res = await handle(
+    post(valid),
+    deps({
+      rpc: (fn) =>
+        Promise.resolve(
+          fn === 'rate_hit'
+            ? { data: true, error: null }
+            : { data: { ok: false, reason: 'cerrado' }, error: null },
+        ),
+    }),
+  );
+  assertEquals(
+    (await res.json()).message,
+    'En este momento no estamos recibiendo pedidos. Revisa nuestro horario.',
+  );
+});

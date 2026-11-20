@@ -9,6 +9,9 @@ import {
   hasDish,
   normalizeCart,
   orderItems,
+  readLastOrder,
+  repeatOrder,
+  snapshotOrder,
   type CartCoupon,
   type CartProduct,
 } from './cart';
@@ -187,5 +190,105 @@ describe('adiciones solo con plato (D47)', () => {
       isAddon,
     );
     expect(result).toEqual({ lines: [], removed: 3 });
+  });
+});
+
+describe('repetir el último pedido (D63)', () => {
+  const live: CartProduct[] = [
+    { id: 'burger', price: 30000, comboPrice: 38000, available: true },
+    { id: 'perro', price: 20000, comboPrice: null, available: true },
+    { id: 'agotada', price: 25000, comboPrice: null, available: false },
+    { id: 'huevo', price: 3000, comboPrice: null, available: true },
+  ];
+  const isAddon = (id: string) => id === 'huevo';
+  let counter = 0;
+  const newKey = () => `k${++counter}`;
+
+  it('guarda solo las líneas y las vuelve a leer', () => {
+    const snap = snapshotOrder(
+      [
+        { key: 'a', productId: 'burger', qty: 2, combo: true },
+        { key: 'b', productId: 'huevo', qty: 1, combo: false, parent: 'a' },
+      ],
+      1,
+    );
+    expect(readLastOrder(JSON.parse(JSON.stringify(snap)))).toEqual(snap);
+  });
+
+  it('descarta lo dañado', () => {
+    expect(readLastOrder(null)).toBeNull();
+    expect(readLastOrder({ at: 1, lines: [] })).toBeNull();
+    expect(
+      readLastOrder({
+        at: 1,
+        lines: [
+          { productId: 'x', qty: 0 },
+          { productId: 3, qty: 1 },
+        ],
+      }),
+    ).toBeNull();
+    expect(readLastOrder({ at: 1, lines: [{ productId: 'x', qty: 2, parent: '<b>' }] })?.lines).toEqual([
+      { productId: 'x', qty: 2, combo: false },
+    ]);
+  });
+
+  it('arma el carrito con llaves nuevas y la adición ligada a su plato', () => {
+    const { lines, missing, noCombo } = repeatOrder(
+      {
+        at: 1,
+        lines: [
+          { key: 'a', productId: 'burger', qty: 1, combo: true },
+          { key: 'b', productId: 'huevo', qty: 1, combo: false, parent: 'a' },
+          { key: 'c', productId: 'agotada', qty: 1, combo: false },
+          { key: 'd', productId: 'oculta', qty: 1, combo: false },
+        ],
+      },
+      { products: live, isAddon, newKey },
+    );
+    expect(missing).toEqual(['agotada', 'oculta']);
+    expect(noCombo).toEqual([]);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({ productId: 'burger', combo: true });
+    expect(lines[0]?.key).not.toBe('a');
+    expect(lines[1]).toMatchObject({ productId: 'huevo', parent: lines[0]?.key });
+  });
+
+  it('sin combo disponible vuelve sola', () => {
+    const { lines, noCombo } = repeatOrder(
+      { at: 1, lines: [{ key: 'a', productId: 'burger', qty: 1, combo: true }] },
+      { products: live, comboOut: new Set(['burger']), isAddon, newKey },
+    );
+    expect(lines[0]?.combo).toBe(false);
+    expect(noCombo).toEqual(['burger']);
+  });
+
+  it('si el plato no está, la adición queda aparte; sin ningún plato se descarta', () => {
+    const apart = repeatOrder(
+      {
+        at: 1,
+        lines: [
+          { key: 'a', productId: 'agotada', qty: 1, combo: false },
+          { key: 'b', productId: 'huevo', qty: 1, combo: false, parent: 'a' },
+          { key: 'c', productId: 'perro', qty: 1, combo: false },
+        ],
+      },
+      { products: live, isAddon, newKey },
+    );
+    expect(apart.lines.map((line) => [line.productId, line.parent])).toEqual([
+      ['huevo', undefined],
+      ['perro', undefined],
+    ]);
+    const none = repeatOrder(
+      {
+        at: 1,
+        lines: [
+          { key: 'a', productId: 'agotada', qty: 1, combo: false },
+          { key: 'b', productId: 'huevo', qty: 1, combo: false, parent: 'a' },
+        ],
+      },
+      { products: live, isAddon, newKey },
+    );
+    expect(none.lines).toEqual([]);
+    expect(none.missing).toEqual(['agotada', 'huevo']);
   });
 });

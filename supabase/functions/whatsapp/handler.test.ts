@@ -1,5 +1,5 @@
 import { assertEquals } from '@std/assert';
-import { buildMessage, safeName, type WaMessage } from '../_shared/plantillas.ts';
+import { buildMessage, safeName, safeText, type WaMessage } from '../_shared/plantillas.ts';
 import { handle, metaSender, type Deps, type Status } from './handler.ts';
 
 const order = {
@@ -101,4 +101,25 @@ Deno.test('safeName deja solo un primer nombre seguro (auditoría)', () => {
   assertEquals(safeName('María José'), 'María');
   assertEquals(safeName('https://x.co'), 'https');
   assertEquals(safeName(''), 'cliente');
+});
+
+Deno.test('D59: pedido anulado avisa al cliente con el motivo público', () => {
+  const built = buildMessage({
+    ...base,
+    kind: 'pedido_cancelado',
+    order: { ...order, status: 'cancelado', cancel_note: 'Se nos acabó\nel pan  de hoy' },
+  });
+  assertEquals('skip' in built ? built : built.params, ['Ana', 'JP-0001', 'Se nos acabó el pan de hoy']);
+  assertEquals('to' in built && built.to, '573105551234');
+});
+
+Deno.test('D59: sin motivo público no hay aviso de anulación', () => {
+  assertEquals(buildMessage({ ...base, kind: 'pedido_cancelado', order: { ...order, cancel_note: null } }), {
+    skip: 'sin_motivo',
+  });
+});
+
+Deno.test('safeText limpia saltos y corta a 160', () => {
+  assertEquals(safeText('a\r\n\tb'), 'a b');
+  assertEquals(safeText('x'.repeat(200)).length, 160);
 });

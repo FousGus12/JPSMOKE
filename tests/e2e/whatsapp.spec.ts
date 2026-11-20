@@ -39,18 +39,19 @@ test('un pedido web encola confirmación y aviso; el panel los muestra', async (
   );
 });
 
-test('la pantalla de WhatsApp muestra las 5 plantillas con datos de ejemplo', async ({ page }) => {
+test('la pantalla de WhatsApp muestra las 6 plantillas con datos de ejemplo', async ({ page }) => {
   await loginAdmin(page);
   await goTo(page, 'WhatsApp');
   await expect(page.getByRole('heading', { name: 'Así se ven' })).toBeVisible();
   const previews = page.locator('.wa-preview');
-  await expect(previews).toHaveCount(5);
+  await expect(previews).toHaveCount(6);
   await expect(previews.locator('.wa-tpl')).toHaveText([
     'pedido_recibido',
     'aviso_negocio',
     'en_camino',
     'informe_semanal',
     'stock_bajo',
+    'pedido_cancelado', // D59
   ]);
   await expect(previews.nth(0)).toContainText('Recibimos tu pedido JP-0042');
   await expect(previews.nth(4)).toContainText('llegó al mínimo');

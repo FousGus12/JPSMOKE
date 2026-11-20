@@ -6,8 +6,8 @@ select plan(8);
 select is(
   (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.prosecdef and has_function_privilege('anon', p.oid, 'execute')
-      and p.proname not in ('track_order', 'stock_status')),
-  0, 'anon no ejecuta funciones security definer, salvo track_order (D21) y stock_status (solo ids agotados, D30)');
+      and p.proname not in ('track_order', 'stock_status', 'ordering_status')),
+  0, 'anon no ejecuta funciones security definer, salvo track_order (D21), stock_status (solo ids agotados, D30) y ordering_status (D61)');
 select ok(not has_schema_privilege('anon', 'private', 'usage'), 'anon no usa el esquema private');
 select ok(not has_schema_privilege('authenticated', 'private', 'usage'), 'authenticated no usa el esquema private');
 select is(

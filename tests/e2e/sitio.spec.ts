@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test, type Page } from '@playwright/test';
+import { welcomeClock, withWelcomeCurrent } from './ayudas';
 
 const DB = 'postgresql://postgres:postgres@127.0.0.1:57322/postgres';
 const psql = (query: string) => execFileSync('psql', [DB, '-Atqc', query], { encoding: 'utf8' }).trim();
@@ -41,6 +42,7 @@ async function openCart(page: Page) {
 }
 
 async function enter(page: Page) {
+  await welcomeClock(page); // la bienvenida forzada también respeta sus fechas (D62)
   await page.goto('/?intro=completa');
   // El botón de entrar responde de inmediato (D50); la prueba de tiempo está en v018-sitio.spec.ts.
   await page.locator('#intro button[data-intro-close]').click();
@@ -49,14 +51,18 @@ async function enter(page: Page) {
 }
 
 test('bienvenida en modo aviso con captación de cupón', async ({ page }) => {
-  await page.goto('/?intro=aviso');
-  const popup = page.locator('#popup');
-  await expect(popup).toBeVisible();
-  await popup.getByLabel('Nombre').fill('Prueba Playwright');
-  await popup.getByLabel('Celular').fill(phone());
-  await popup.getByRole('checkbox').check();
-  await popup.getByRole('button', { name: 'Quiero mi cupón' }).click();
-  await expect(popup.getByText('BIENVENIDA10')).toBeVisible();
+  // Independiente de la fecha: reloj del navegador dentro de la ventana y evento vigente en la base.
+  await welcomeClock(page);
+  await withWelcomeCurrent(async () => {
+    await page.goto('/?intro=aviso');
+    const popup = page.locator('#popup');
+    await expect(popup).toBeVisible();
+    await popup.getByLabel('Nombre').fill('Prueba Playwright');
+    await popup.getByLabel('Celular').fill(phone());
+    await popup.getByRole('checkbox').check();
+    await popup.getByRole('button', { name: 'Quiero mi cupón' }).click();
+    await expect(popup.getByText('BIENVENIDA10')).toBeVisible();
+  });
 });
 
 test('la carta filtra por categoría y por búsqueda', async ({ page }) => {

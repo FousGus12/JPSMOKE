@@ -1,9 +1,18 @@
-// Seguridad (D43): pedidos frenados, registro de auditoría y código de dos pasos del equipo. Solo administración.
+// Seguridad (D43, D65): pedidos frenados (con acciones si hay cliente ligado), registro de auditoría y código de dos pasos del equipo. Solo administración.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatCop as money } from '../core/money';
-import { BLOCK_REASONS, auditDetailText, maskPhone, nextAuditCursor, reasonLabel } from '../core/security';
+import {
+  BLOCK_REASONS,
+  auditDetailText,
+  blockedActions,
+  maskPhone,
+  nextAuditCursor,
+  reasonLabel,
+} from '../core/security';
+import { updateCustomer } from './customers-data';
 import { AUDIT_PAGE, loadAudit, loadBlocked, type AuditRow, type BlockedAttempt } from './security-data';
 import { loadTeam, type Member } from './team-data';
+import { useToast } from './ui';
 
 const dateTime = new Intl.DateTimeFormat('es-CO', {
   timeZone: 'America/Bogota',
@@ -22,15 +31,41 @@ export function Seguridad() {
 }
 
 function Frenados() {
+  const toast = useToast();
   const [rows, setRows] = useState<BlockedAttempt[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
   useEffect(() => {
     loadBlocked()
       .then(setRows)
       .catch(() => setFailed(true));
   }, []);
   const shown = useMemo(() => (rows ?? []).filter((row) => !reason || row.reason === reason), [rows, reason]);
+
+  async function unblock(row: BlockedAttempt) {
+    const id = row.customer_id;
+    if (!id || !row.customer || busy) return;
+    const who = row.customer.name;
+    if (!confirm(`¿Desbloquear a ${who}? Podrá volver a hacer pedidos de inmediato.`)) return;
+    setBusy(id);
+    try {
+      await updateCustomer(id, { blocked: false });
+      // El mismo cliente puede tener varios frenados: todos quedan desbloqueados.
+      setRows((list) =>
+        (list ?? []).map((item) =>
+          item.customer_id === id && item.customer
+            ? { ...item, customer: { ...item.customer, blocked: false } }
+            : item,
+        ),
+      );
+      toast(`${who} quedó desbloqueado.`);
+    } catch (failure) {
+      toast(failure instanceof Error ? failure.message : 'No se pudo desbloquear.');
+    } finally {
+      setBusy(null);
+    }
+  }
   return (
     <section className="card" aria-labelledby="seg-frenados">
       <div className="card-head">
@@ -68,6 +103,7 @@ function Frenados() {
                 <th>Zona</th>
                 <th>Total intentado</th>
                 <th>Productos</th>
+                <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -80,6 +116,13 @@ function Frenados() {
                   <td>{row.zone_name ?? '—'}</td>
                   <td>{typeof row.total_attempt === 'number' ? money(row.total_attempt) : '—'}</td>
                   <td>{row.items_count ?? '—'}</td>
+                  <td>
+                    <FrenadoActions
+                      row={row}
+                      busy={busy === row.customer_id}
+                      onUnblock={() => void unblock(row)}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -87,6 +130,33 @@ function Frenados() {
         </div>
       ) : null}
     </section>
+  );
+}
+
+function FrenadoActions({
+  row,
+  busy,
+  onUnblock,
+}: {
+  row: BlockedAttempt;
+  busy: boolean;
+  onUnblock: () => void;
+}) {
+  const actions = blockedActions(row, row.customer_name);
+  if (!actions || (!actions.unblock && !actions.whatsapp)) return <span className="muted">—</span>;
+  return (
+    <div className="seg-actions">
+      {actions.unblock ? (
+        <button className="btn btn-soft btn-sm" type="button" disabled={busy} onClick={onUnblock}>
+          Desbloquear
+        </button>
+      ) : null}
+      {actions.whatsapp ? (
+        <a className="btn btn-soft btn-sm" href={actions.whatsapp} target="_blank" rel="noopener noreferrer">
+          Escribir por WhatsApp
+        </a>
+      ) : null}
+    </div>
   );
 }
 

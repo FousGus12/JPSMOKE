@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildReceipt, maskPhone, wrapText, type ReceiptOrderInput } from './receipt';
+import { buildKitchenTicket, buildReceipt, maskPhone, wrapText, type ReceiptOrderInput } from './receipt';
 
 const business = { name: 'JP Smoke' };
 function order(patch: Partial<ReceiptOrderInput> = {}): ReceiptOrderInput {
@@ -97,6 +97,32 @@ describe('buildReceipt', () => {
       business,
     );
     expect(built.items.map((item) => item.name)).toEqual(['A', 'B']);
+  });
+});
+
+describe('buildKitchenTicket', () => {
+  it('sin precios, celular ni dirección', () => {
+    const ticket = buildKitchenTicket(order({ notes: 'Sin cebolla' }));
+    const text = JSON.stringify(ticket);
+    expect(text).not.toContain('$');
+    expect(text).not.toMatch(/300|4567|Cra 7/);
+    expect(ticket.code).toBe('JP-0042');
+    expect(ticket.timeText).toMatch(/3:45/);
+    expect(ticket.delivery).toBe('Domicilio · Chapinero');
+  });
+  it('adiciones anidadas bajo su plato', () => {
+    expect(buildKitchenTicket(order()).items).toEqual([
+      { qty: 2, name: 'Burger Negra (combo)', addon: false },
+      { qty: 2, name: 'Tocineta extra', addon: true },
+    ]);
+  });
+  it('recoger y domicilio sin barrio', () => {
+    expect(buildKitchenTicket(order({ fulfillment: 'recoger' })).delivery).toBe('Recoge en tienda');
+    expect(buildKitchenTicket(order({ barrio: ' ' })).delivery).toBe('Domicilio');
+  });
+  it('notas y anulado', () => {
+    expect(buildKitchenTicket(order({ notes: '  Sin cebolla ' })).notes).toBe('Sin cebolla');
+    expect(buildKitchenTicket(order({ status: 'cancelado' })).voided).toBe(true);
   });
 });
 

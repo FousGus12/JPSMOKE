@@ -21,9 +21,19 @@ import {
   staleMoves,
   CANCEL_REASONS,
   CHANNEL_LABEL,
+  DELIVER_UNDO_MS,
+  PUBLIC_CANCEL_MAX,
+  PUBLIC_CANCEL_MESSAGES,
   STATUS_LABEL,
   VOID_REASONS,
+  asksRestore,
+  cancelWhatsApp,
+  cancelledToday,
   customerWhatsApp,
+  deferredConflicts,
+  publicCancelText,
+  restoreFlag,
+  undoSecondsLeft,
   formatPhone,
   groupBoard,
   isCompact,
@@ -35,12 +45,20 @@ import {
   voidReasonText,
   type OrderStatus,
   type PendingMove,
+  type PublicCancelChoice,
   type StaffRole,
   type VoidReason,
 } from '../core/orders';
-import { loadMyRole, setStatus, type PanelOrder } from './data';
+import {
+  loadMyRole,
+  loadStaffNames,
+  sessionToken,
+  setStatus,
+  setStatusKeepalive,
+  type PanelOrder,
+} from './data';
 import { Recibo } from './Recibo';
-import { Drawer, Modal, useToast } from './ui';
+import { Drawer, Modal, useAnnounce } from './ui';
 
 const time = (iso: string) =>
   new Date(iso).toLocaleTimeString('es-CO', {
@@ -118,6 +136,26 @@ interface Gesture {
   end: (returnGhost: boolean) => void;
 }
 
+/** Entrega diferida (D60): sale a los 10 s salvo "Deshacer"; al cerrar la pestaña sale de inmediato. */
+interface Deferred {
+  from: OrderStatus;
+  code: string;
+  deadline: number;
+  timer: number;
+  /** Token de la sesión, guardado al programar: en pagehide no se puede esperar getSession. */
+  token: string | null;
+}
+
+/** Resultado de una anulación con mensaje público: ofrece avisar por WhatsApp (D59). */
+interface CancelResult {
+  code: string;
+  phone: string;
+  name: string;
+  verb: 'anulado' | 'cancelado';
+  message: string;
+  coupon: string | null;
+}
+
 /** Pulsación larga para empezar a arrastrar con el dedo; antes de eso el dedo desplaza el tablero. */
 const LONG_PRESS_MS = 250;
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -143,14 +181,22 @@ export function Pedidos({
   isAdmin?: boolean;
   onChanged: () => void;
 }) {
-  const toast = useToast();
+  const announce = useAnnounce();
   const [openId, setOpenId] = useState<string | null>(null);
   const [voidId, setVoidId] = useState<string | null>(null);
+  const [cancelResult, setCancelResult] = useState<CancelResult | null>(null);
+  /** Pedidos con "Deshacer" visible y su fecha límite (copia para pintar; la verdad está en `deferred`). */
+  const [undo, setUndo] = useState<ReadonlyMap<string, number>>(() => new Map());
+  const [clock, setClock] = useState(() => Date.now());
+  const [showCancelled, setShowCancelled] = useState(false);
+  const [staffNames, setStaffNames] = useState<Map<string, string> | null>(null);
+  const deferred = useRef(new Map<string, Deferred>());
+  /** Enviados con keepalive: si la página vuelve del historial (bfcache) se recarga el tablero. */
+  const flushed = useRef(new Set<string>());
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [fetchedRole, setFetchedRole] = useState<StaffRole | null>(null);
   const [moves, setMoves] = useState<Map<string, PendingMove>>(() => new Map());
   const [drag, setDrag] = useState<DragView | null>(null);
-  const [announcement, setAnnouncement] = useState('');
   /** Movimiento que espera confirmación (a Entregado o saltando estados). */
   const [confirmMove, setConfirmMove] = useState<{
     order: PanelOrder;
@@ -189,13 +235,17 @@ export function Pedidos({
     latest.current = { orders, moves, liveBoard, onChanged };
   }, [orders, moves, liveBoard, onChanged]);
 
-  const announce = useCallback(
-    (message: string) => {
-      setAnnouncement(message);
-      toast(message);
-    },
-    [toast],
-  );
+  const cancelledList = useMemo(() => cancelledToday(orders, now), [orders, now]);
+  useEffect(() => {
+    if (!showCancelled || staffNames) return;
+    let alive = true;
+    void loadStaffNames().then((names) => {
+      if (alive) setStaffNames(names);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [showCancelled, staffNames]);
 
   // Con el arrastre activo el dedo no desplaza el tablero. Listener nativo no pasivo desde el montaje:
   // React registra touchmove como pasivo y touch-action no cambia a mitad del gesto.
@@ -247,6 +297,162 @@ export function Pedidos({
       }
     },
     [announce],
+  );
+
+  /* Deshacer al marcar Entregado (D60). */
+
+  const dropMove = useCallback((id: string) => {
+    setMoves((current) => {
+      if (!current.has(id)) return current;
+      const next = new Map(current);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+  const syncUndo = useCallback(() => {
+    setUndo(new Map([...deferred.current].map(([id, entry]) => [id, entry.deadline])));
+  }, []);
+  /** Saca la entrega de la cola (sin enviar). Devuelve la entrada si existía. */
+  const takeDeferred = useCallback(
+    (id: string) => {
+      const entry = deferred.current.get(id);
+      if (!entry) return null;
+      clearTimeout(entry.timer);
+      deferred.current.delete(id);
+      syncUndo();
+      return entry;
+    },
+    [syncUndo],
+  );
+  const fireDeferred = useCallback(
+    (id: string) => {
+      const entry = takeDeferred(id);
+      if (!entry) return;
+      const current = latest.current.orders.find((item) => item.id === id);
+      if (!current || current.status !== entry.from) {
+        dropMove(id);
+        announce(`${entry.code} cambió en otro dispositivo: no se marcó como entregado.`);
+        return;
+      }
+      void commit(current, entry.from, 'entregado');
+    },
+    [announce, commit, dropMove, takeDeferred],
+  );
+
+  const deferDeliver = useCallback(
+    (order: PanelOrder, from: OrderStatus) => {
+      if (deferred.current.has(order.id)) return;
+      setMoves((current) => {
+        const next = new Map(current);
+        for (const id of staleMoves(latest.current.orders, current)) next.delete(id);
+        next.set(order.id, { from, to: 'entregado' });
+        return next;
+      });
+      const entry: Deferred = {
+        from,
+        code: order.code,
+        deadline: Date.now() + DELIVER_UNDO_MS,
+        timer: window.setTimeout(() => fireDeferred(order.id), DELIVER_UNDO_MS),
+        token: null,
+      };
+      deferred.current.set(order.id, entry);
+      setClock(Date.now());
+      syncUndo();
+      void sessionToken().then((token) => {
+        entry.token = token;
+      });
+      announce(`${order.code} se marca como entregado en 10 segundos. Puedes deshacerlo.`);
+    },
+    [announce, fireDeferred, syncUndo],
+  );
+
+  const undoDeliver = useCallback(
+    (id: string) => {
+      const entry = takeDeferred(id);
+      if (!entry) return;
+      dropMove(id);
+      announce(`${entry.code} sigue en ${STATUS_LABEL[entry.from]}.`);
+    },
+    [announce, dropMove, takeDeferred],
+  );
+
+  /** Envía ya todas las entregas en cola: con keepalive si la página se va, o normal al salir de Pedidos. */
+  const flushDeferred = useCallback(
+    (leaving: boolean) => {
+      for (const [id, entry] of [...deferred.current]) {
+        takeDeferred(id);
+        // El pedido ya no está donde se programó: otro dispositivo lo cambió y no se pisa.
+        if (latest.current.orders.find((item) => item.id === id)?.status !== entry.from) {
+          dropMove(id);
+          continue;
+        }
+        if (leaving && entry.token) {
+          flushed.current.add(id);
+          setStatusKeepalive(id, 'entregado', entry.token);
+        } else
+          void setStatus(id, 'entregado').then(
+            () => latest.current.onChanged(),
+            (failure: unknown) =>
+              announce(
+                `${entry.code} no se marcó como entregado. ${failure instanceof Error ? failure.message : ''}`.trim(),
+              ),
+          );
+      }
+    },
+    [announce, dropMove, takeDeferred],
+  );
+  // Cuenta regresiva visible mientras haya entregas en cola.
+  useEffect(() => {
+    if (undo.size === 0) return;
+    const timer = setInterval(() => setClock(Date.now()), 500);
+    return () => clearInterval(timer);
+  }, [undo.size]);
+
+  // Otro dispositivo cambió un pedido en cola: se cancela la entrega y se avisa (no se pisa).
+  useEffect(() => {
+    for (const id of deferredConflicts(orders, deferred.current)) {
+      const entry = takeDeferred(id);
+      if (!entry) continue;
+      dropMove(id);
+      announce(`${entry.code} cambió en otro dispositivo: no se marcó como entregado.`);
+    }
+  }, [orders, announce, dropMove, takeDeferred]);
+
+  // Cerrar la pestaña, ocultarla (el celular la congela o la mata sin pagehide) o salir de Pedidos envía ya.
+  useEffect(() => {
+    const onPageHide = () => flushDeferred(true);
+    // Al volver, lo enviado con keepalive se relee de la base (si falló, la tarjeta no queda mintiendo).
+    const reread = () => {
+      if (flushed.current.size === 0) return;
+      for (const id of flushed.current) dropMove(id);
+      flushed.current.clear();
+      latest.current.onChanged();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flushDeferred(true);
+      else reread();
+    };
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) reread();
+    };
+    addEventListener('pagehide', onPageHide);
+    addEventListener('pageshow', onPageShow);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      removeEventListener('pagehide', onPageHide);
+      removeEventListener('pageshow', onPageShow);
+      document.removeEventListener('visibilitychange', onVisibility);
+      flushDeferred(false);
+    };
+  }, [flushDeferred, dropMove]);
+
+  /** Mover a un estado: Entregado espera 10 s con "Deshacer" (D60); el resto sale ya. */
+  const advance = useCallback(
+    (order: PanelOrder, from: OrderStatus, to: OrderStatus) => {
+      if (to === 'entregado') deferDeliver(order, from);
+      else void commit(order, from, to);
+    },
+    [commit, deferDeliver],
   );
 
   function startGesture(event: ReactPointerEvent<HTMLElement>, order: PanelOrder) {
@@ -305,6 +511,10 @@ export function Pedidos({
       live.offsetX = live.startX - rect.left;
       live.offsetY = live.startY - rect.top;
       const ghost = card.cloneNode(true) as HTMLElement;
+      // CSP (WebKit): un atributo style copiado al clonar cuenta como estilo en línea. Se quita en el
+      // fantasma y en sus hijos; la posición y el ancho van por CSSOM (el.style.setProperty sí se permite).
+      ghost.removeAttribute('style');
+      for (const child of ghost.querySelectorAll('[style]')) child.removeAttribute('style');
       ghost.removeAttribute('data-testid');
       ghost.removeAttribute('id');
       ghost.setAttribute('aria-hidden', 'true');
@@ -444,9 +654,6 @@ export function Pedidos({
         con <b>＋ Pedido manual</b>. Para avanzar un pedido arrástralo a otra columna (en el celular, mantenlo
         presionado) o ábrelo y usa el botón del siguiente estado.
       </div>
-      <p className="board-live" role="status" aria-live="polite">
-        {announcement}
-      </p>
       <div className={`board ${drag ? 'is-dragging' : ''}`} ref={boardRef}>
         {BOARD_COLUMNS.map(([status, label]) => {
           const list = board[status];
@@ -461,7 +668,14 @@ export function Pedidos({
                 isCompact(order.status) ? (
                   <div
                     key={order.id}
-                    className={`ocard ocard-compact ${expanded.has(order.id) ? 'is-open' : ''}`}
+                    className={[
+                      'ocard',
+                      'ocard-compact',
+                      expanded.has(order.id) ? 'is-open' : '',
+                      undo.has(order.id) ? 'is-deferred' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
                     data-testid={`pedido-${order.code}`}
                   >
                     <button
@@ -474,6 +688,20 @@ export function Pedidos({
                       <b>{order.code}</b>
                       <span>{money(order.total)}</span>
                     </button>
+                    {undo.has(order.id) ? (
+                      <div className="undo-bar">
+                        <span className="undo-track" aria-hidden="true">
+                          <span className="undo-fill" />
+                        </span>
+                        <button
+                          className="btn btn-soft btn-sm"
+                          type="button"
+                          onClick={() => undoDeliver(order.id)}
+                        >
+                          Deshacer ({undoSecondsLeft(undo.get(order.id) ?? 0, clock)} s)
+                        </button>
+                      </div>
+                    ) : null}
                     {expanded.has(order.id) ? (
                       <div className="ocard-more" id={`pedido-mas-${order.id}`}>
                         <Channels order={order} />
@@ -528,7 +756,9 @@ export function Pedidos({
           question={dropConfirmText(confirmMove.order.code, confirmMove.from, confirmMove.to)}
           onCancel={() => {
             setConfirmMove(null);
-            setAnnouncement(`${confirmMove.order.code} sigue en ${STATUS_LABEL[confirmMove.from]}`);
+            announce(`${confirmMove.order.code} sigue en ${STATUS_LABEL[confirmMove.from]}`, {
+              toast: false,
+            });
           }}
           onConfirm={() => {
             const { order, from, to } = confirmMove;
@@ -538,18 +768,65 @@ export function Pedidos({
               announce(`${order.code} cambió mientras confirmabas; revisa el tablero.`);
               return;
             }
-            void commit(current, from, to);
+            advance(current, from, to);
           }}
         />
       ) : null}
-      {voiding ? (
+      {cancelledList.length > 0 ? (
+        <section className="cancelled-today" aria-label="Cancelados de hoy">
+          <button
+            className="cancelled-toggle"
+            type="button"
+            aria-expanded={showCancelled}
+            aria-controls="cancelados-hoy"
+            onClick={() => setShowCancelled((value) => !value)}
+          >
+            <b>Cancelados de hoy</b>
+            <span>{cancelledList.length}</span>
+          </button>
+          {showCancelled ? (
+            <ul className="cancelled-list" id="cancelados-hoy">
+              {cancelledList.map(({ order, at, byUser }) => (
+                <li key={order.id} data-testid={`cancelado-${order.code}`}>
+                  <div className="cancelled-head">
+                    <b>{order.code}</b>
+                    <span>{time(at)}</span>
+                    <span className="cancelled-total">{money(order.total)}</span>
+                  </div>
+                  <dl className="cancelled-kv">
+                    <dt>Estaba en</dt>
+                    <dd>{order.voided_from ? STATUS_LABEL[order.voided_from] : '—'}</dd>
+                    <dt>Motivo</dt>
+                    <dd>{order.cancel_reason ?? '—'}</dd>
+                    <dt>Al cliente</dt>
+                    <dd>{order.cancel_public ?? 'Sin mensaje'}</dd>
+                    <dt>Insumos</dt>
+                    <dd>
+                      {order.supplies_restored === false
+                        ? 'No volvieron (ya se usaron)'
+                        : order.supplies_restored
+                          ? 'Volvieron al inventario'
+                          : '—'}
+                    </dd>
+                    <dt>Quién</dt>
+                    <dd>{(byUser && staffNames?.get(byUser)) || '—'}</dd>
+                  </dl>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
+      {cancelResult ? (
+        <CancelDone result={cancelResult} restaurant={restaurant} onClose={() => setCancelResult(null)} />
+      ) : voiding ? (
         <VoidOrder
           order={voiding}
           onClose={() => setVoidId(null)}
-          onDone={() => {
-            setAnnouncement(`${voiding.code} anulado`);
+          onDone={(result) => {
             setVoidId(null);
             setOpenId(null);
+            if (result) setCancelResult(result);
             onChanged();
           }}
         />
@@ -557,6 +834,7 @@ export function Pedidos({
         <OrderDetail
           order={open}
           role={role}
+          deferredUntil={undo.get(open.id) ?? null}
           business={{
             name: restaurant,
             ...(restaurantPhone ? { phone: restaurantPhone } : {}),
@@ -564,7 +842,14 @@ export function Pedidos({
           }}
           onClose={() => setOpenId(null)}
           onVoid={() => setVoidId(open.id)}
-          onMoved={setAnnouncement}
+          onDeliver={() => {
+            setOpenId(null);
+            deferDeliver(open, open.status);
+          }}
+          onCancelled={(result) => {
+            setOpenId(null);
+            if (result) setCancelResult(result);
+          }}
           onChanged={onChanged}
         />
       ) : null}
@@ -599,7 +884,136 @@ function ConfirmMove({
   );
 }
 
-/** Anular con motivo (D42). Reemplaza al cajón mientras está abierto: Escape vuelve al pedido. */
+/** Mensaje para el cliente y devolución de insumos (D59): lo comparten anular (admin) y cancelar (operador). */
+interface CancelExtrasValue {
+  publicChoice: PublicCancelChoice | '';
+  publicOther: string;
+  /** Respuesta a "¿Devolver insumos?" (por defecto No). Solo cuenta desde En el barril. */
+  restore: boolean;
+}
+const EMPTY_EXTRAS: CancelExtrasValue = { publicChoice: '', publicOther: '', restore: false };
+
+function CancelExtras({
+  idPrefix,
+  status,
+  value,
+  invalidOther,
+  onChange,
+}: {
+  idPrefix: string;
+  status: OrderStatus;
+  value: CancelExtrasValue;
+  invalidOther: boolean;
+  onChange: (value: CancelExtrasValue) => void;
+}) {
+  return (
+    <>
+      <div className="field">
+        <label htmlFor={`${idPrefix}-public`}>Mensaje para el cliente (opcional)</label>
+        <select
+          className="select"
+          id={`${idPrefix}-public`}
+          value={value.publicChoice}
+          onChange={(event) =>
+            onChange({ ...value, publicChoice: event.target.value as PublicCancelChoice | '' })
+          }
+        >
+          <option value="">Sin mensaje</option>
+          {PUBLIC_CANCEL_MESSAGES.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+        </select>
+        <span className="hint">Lo ve en el seguimiento del pedido y puedes enviárselo por WhatsApp.</span>
+      </div>
+      {value.publicChoice === 'Otro' ? (
+        <div className="field">
+          <label htmlFor={`${idPrefix}-public-other`}>Qué le decimos al cliente</label>
+          <input
+            className="input"
+            id={`${idPrefix}-public-other`}
+            maxLength={PUBLIC_CANCEL_MAX}
+            value={value.publicOther}
+            aria-invalid={invalidOther || undefined}
+            aria-describedby={`${idPrefix}-public-count`}
+            onChange={(event) => onChange({ ...value, publicOther: event.target.value })}
+          />
+          <span className="hint" id={`${idPrefix}-public-count`}>
+            {value.publicOther.length}/{PUBLIC_CANCEL_MAX}
+          </span>
+        </div>
+      ) : null}
+      {asksRestore(status) ? (
+        <fieldset className="void-reasons">
+          <legend>¿Devolver insumos al inventario?</legend>
+          <div className="chips">
+            <label className="chip-check">
+              <input
+                type="radio"
+                name={`${idPrefix}-restore`}
+                checked={!value.restore}
+                onChange={() => onChange({ ...value, restore: false })}
+              />
+              No, ya se usaron
+            </label>
+            <label className="chip-check">
+              <input
+                type="radio"
+                name={`${idPrefix}-restore`}
+                checked={value.restore}
+                onChange={() => onChange({ ...value, restore: true })}
+              />
+              Sí, devolverlos
+            </label>
+          </div>
+        </fieldset>
+      ) : null}
+    </>
+  );
+}
+
+/** Texto del aviso según lo elegido: insumos, cupón y ventas. */
+function cancelNote(order: PanelOrder, extras: CancelExtrasValue): string {
+  const restore = restoreFlag(order.status, extras.restore);
+  return [
+    restore ? 'Los insumos vuelven al inventario.' : 'Los insumos no vuelven al inventario.',
+    order.coupon_code ? `El cupón ${order.coupon_code} recupera el uso.` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+/** Envía la anulación con motivo interno, mensaje público e insumos. Devuelve el resultado para avisar al cliente. */
+async function sendCancel(
+  order: PanelOrder,
+  reason: string,
+  extras: CancelExtrasValue,
+  verb: CancelResult['verb'],
+): Promise<CancelResult | null> {
+  const message = publicCancelText(extras.publicChoice, extras.publicOther);
+  await setStatus(order.id, 'cancelado', reason, {
+    publicReason: message ?? null,
+    restore: restoreFlag(order.status, extras.restore),
+  });
+  return message
+    ? {
+        code: order.code,
+        phone: order.phone,
+        name: order.customer_name,
+        verb,
+        message,
+        coupon: order.coupon_code,
+      }
+    : null;
+}
+
+/** Aviso del resultado (una sola vez, por la región única del panel). */
+function cancelToast(order: PanelOrder, verb: CancelResult['verb']): string {
+  return `${order.code} ${verb}${order.coupon_code ? ` · el cupón ${order.coupon_code} recupera el uso` : ''}`;
+}
+
+/** Anular con motivo (D42, D59). Reemplaza al cajón mientras está abierto: Escape vuelve al pedido. */
 function VoidOrder({
   order,
   onClose,
@@ -607,28 +1021,31 @@ function VoidOrder({
 }: {
   order: PanelOrder;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (result: CancelResult | null) => void;
 }) {
-  const toast = useToast();
+  const announce = useAnnounce();
   const [choice, setChoice] = useState<VoidReason | ''>('');
   const [detail, setDetail] = useState('');
+  const [extras, setExtras] = useState<CancelExtrasValue>(EMPTY_EXTRAS);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState('');
   const first = useRef<HTMLInputElement>(null);
   useEffect(() => first.current?.focus(), []);
   const reason = voidReasonText(choice, detail);
   const delivered = order.status === 'entregado';
+  const otherMissing = publicCancelText(extras.publicChoice, extras.publicOther) === undefined;
 
   async function submit(event: SyntheticEvent) {
     event.preventDefault();
     if (!reason)
       return setFailure(choice === 'Otro' ? 'Escribe el motivo (mínimo 3 letras).' : 'Elige un motivo.');
+    if (otherMissing) return setFailure('Escribe el mensaje para el cliente (mínimo 3 letras).');
     setBusy(true);
     setFailure('');
     try {
-      await setStatus(order.id, 'cancelado', reason);
-      toast(`${order.code} anulado`);
-      onDone();
+      const result = await sendCancel(order, reason, extras, 'anulado');
+      announce(cancelToast(order, 'anulado'));
+      onDone(result);
     } catch (error) {
       setFailure(error instanceof Error ? error.message : 'No se pudo anular.');
     } finally {
@@ -672,10 +1089,18 @@ function VoidOrder({
             aria-invalid={choice === 'Otro' && failure ? true : undefined}
             onChange={(event) => setDetail(event.target.value)}
           />
+          <span className="hint">Interno: solo lo ve el equipo.</span>
         </div>
+        <CancelExtras
+          idPrefix="void"
+          status={order.status}
+          value={extras}
+          invalidOther={otherMissing && Boolean(failure)}
+          onChange={setExtras}
+        />
         <div className="note note-warn" role="note">
-          <b>Los insumos vuelven al inventario y el pedido sale de ventas.</b> No se borra: queda en el
-          historial con el motivo.
+          <b>{cancelNote(order, extras)} El pedido sale de ventas.</b> No se borra: queda en el historial con
+          el motivo.
           {delivered
             ? ' Si la caja de ese día ya se cerró, el cierre no cambia y Ventas lo muestra aparte.'
             : ''}
@@ -700,39 +1125,108 @@ function VoidOrder({
   );
 }
 
+/** Tras anular con mensaje público: avisar al cliente por WhatsApp (envío automático cuando cierre D48). */
+function CancelDone({
+  result,
+  restaurant,
+  onClose,
+}: {
+  result: CancelResult;
+  restaurant: string;
+  onClose: () => void;
+}) {
+  const link = useRef<HTMLAnchorElement>(null);
+  useEffect(() => link.current?.focus(), []);
+  return (
+    <Modal title={`${result.code} ${result.verb}`} onClose={onClose}>
+      <div className="cancel-done">
+        <p>
+          Mensaje para el cliente: <b>{result.message}</b>
+        </p>
+        <p className="muted">
+          {result.coupon ? `El cupón ${result.coupon} recuperó el uso. ` : ''}
+          El cliente lo ve en el seguimiento del pedido.
+        </p>
+        <div className="btn-row">
+          <a
+            ref={link}
+            className="btn btn-primary"
+            href={cancelWhatsApp(result.phone, result.name, result.code, restaurant, result.message)}
+            target="_blank"
+            rel="noopener"
+          >
+            Avisar por WhatsApp
+          </a>
+          <button className="btn btn-soft" type="button" onClick={onClose}>
+            Listo
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function OrderDetail({
   order,
   role,
+  deferredUntil,
   business,
   onClose,
   onVoid,
-  onMoved,
+  onDeliver,
+  onCancelled,
   onChanged,
 }: {
   order: PanelOrder;
   role: StaffRole | null;
+  /** Fecha límite si el pedido espera los 10 s de "Deshacer" (D60): no se ofrecen acciones. */
+  deferredUntil: number | null;
   business: { name: string; phone?: string; address?: string };
   onClose: () => void;
   onVoid: () => void;
-  /** Anuncia el cambio en la región aria-live del tablero (el cajón se cierra). */
-  onMoved: (message: string) => void;
+  /** Pasar a Entregado: lo difiere el tablero con "Deshacer" (D60). */
+  onDeliver: () => void;
+  /** Cancelado por el operador; con mensaje público trae el resultado para avisar por WhatsApp. */
+  onCancelled: (result: CancelResult | null) => void;
   onChanged: () => void;
 }) {
-  const toast = useToast();
+  const announce = useAnnounce();
   const [reason, setReason] = useState('');
+  const [extras, setExtras] = useState<CancelExtrasValue>(EMPTY_EXTRAS);
   const [busy, setBusy] = useState(false);
-  const { next, canCancel, canVoid } = orderActions(order.status, role, order.fulfillment);
+  const actions = orderActions(order.status, role, order.fulfillment);
+  const locked = deferredUntil !== null;
+  const next = locked ? null : actions.next;
+  const canCancel = !locked && actions.canCancel;
+  const canVoid = !locked && actions.canVoid;
+  const otherMissing = publicCancelText(extras.publicChoice, extras.publicOther) === undefined;
 
-  async function move(status: PanelOrder['status'], why?: string) {
+  async function move(status: OrderStatus) {
+    if (status === 'entregado') return onDeliver();
     setBusy(true);
     try {
-      await setStatus(order.id, status, why);
-      toast(`${order.code} → ${STATUS_LABEL[status]}`);
-      onMoved(`${order.code} pasó a ${STATUS_LABEL[status]}`);
+      await setStatus(order.id, status);
+      announce(`${order.code} pasó a ${STATUS_LABEL[status]}`);
       onChanged();
       onClose();
     } catch (failure) {
-      toast(failure instanceof Error ? failure.message : 'No se pudo cambiar el estado.');
+      announce(failure instanceof Error ? failure.message : 'No se pudo cambiar el estado.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancel() {
+    if (!reason) return announce('Elige el motivo de la cancelación.');
+    if (otherMissing) return announce('Escribe el mensaje para el cliente (mínimo 3 letras).');
+    setBusy(true);
+    try {
+      const result = await sendCancel(order, reason, extras, 'cancelado');
+      announce(cancelToast(order, 'cancelado'));
+      onChanged();
+      onCancelled(result);
+    } catch (failure) {
+      announce(failure instanceof Error ? failure.message : 'No se pudo cancelar.');
     } finally {
       setBusy(false);
     }
@@ -740,6 +1234,11 @@ function OrderDetail({
 
   return (
     <Drawer title={`${order.code} · ${STATUS_LABEL[order.status]}`} onClose={onClose}>
+      {locked ? (
+        <p className="note" role="note">
+          Se marca como entregado en unos segundos. Para evitarlo usa <b>Deshacer</b> en la tarjeta.
+        </p>
+      ) : null}
       <div className="btn-row">
         {next ? (
           <button
@@ -802,6 +1301,12 @@ function OrderDetail({
             <dd>{order.cancel_reason}</dd>
           </>
         ) : null}
+        {order.cancel_public ? (
+          <>
+            <dt>Al cliente</dt>
+            <dd>{order.cancel_public}</dd>
+          </>
+        ) : null}
       </dl>
       <div className="card">
         <div className="lines">
@@ -857,32 +1362,44 @@ function OrderDetail({
           <button className="btn btn-soft btn-sm" type="button" disabled={busy} onClick={onVoid}>
             Anular pedido
           </button>
-          <span className="hint">Sale de ventas y los insumos vuelven al inventario.</span>
+          <span className="hint">
+            Sale de ventas.{' '}
+            {asksRestore(order.status)
+              ? 'Eliges si los insumos vuelven al inventario.'
+              : 'Los insumos vuelven al inventario.'}
+          </span>
         </div>
       ) : null}
       {canCancel ? (
-        <div className="field">
-          <label htmlFor="cancel-r">Cancelar pedido</label>
-          <select
-            className="select"
-            id="cancel-r"
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-          >
-            <option value="">Motivo…</option>
-            {CANCEL_REASONS.map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </select>
-          <button
-            className="btn btn-soft btn-sm"
-            type="button"
-            disabled={busy}
-            onClick={() => void move('cancelado', reason)}
-          >
+        <div className="cancel-box">
+          <div className="field">
+            <label htmlFor="cancel-r">Cancelar pedido</label>
+            <select
+              className="select"
+              id="cancel-r"
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            >
+              <option value="">Motivo…</option>
+              {CANCEL_REASONS.map((item) => (
+                <option key={item}>{item}</option>
+              ))}
+            </select>
+            <span className="hint">Interno: solo lo ve el equipo.</span>
+          </div>
+          <CancelExtras
+            idPrefix="cancel"
+            status={order.status}
+            value={extras}
+            invalidOther={false}
+            onChange={setExtras}
+          />
+          <p className="hint">
+            {cancelNote(order, extras)} "Pedido falso o broma" bloquea ese celular para nuevos pedidos.
+          </p>
+          <button className="btn btn-soft btn-sm" type="button" disabled={busy} onClick={() => void cancel()}>
             Cancelar con motivo
           </button>
-          <span className="hint">"Pedido falso o broma" bloquea ese celular para nuevos pedidos.</span>
         </div>
       ) : null}
     </Drawer>

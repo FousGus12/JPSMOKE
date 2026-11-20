@@ -9,8 +9,11 @@ import {
   qtyText,
   recipeCost,
   servingsLeft,
+  shoppingList,
+  shoppingText,
   suggestedPrice,
   supplyLevel,
+  whatsappShareUrl,
   type RecipeLine,
   type SupplyCost,
 } from '../core/inventory';
@@ -82,6 +85,7 @@ export function Inventario({ restaurantId }: { restaurantId: string }) {
   const [moveSupply, setMoveSupply] = useState('');
   const [action, setAction] = useState<Action | null>(null);
   const [editing, setEditing] = useState<Supply | 'nuevo' | null>(null);
+  const [shopping, setShopping] = useState(false);
 
   const reloadMoves = useCallback(
     () =>
@@ -118,6 +122,21 @@ export function Inventario({ restaurantId }: { restaurantId: string }) {
       supply.active &&
       supplyLevel({ id: supply.id, stock: supply.stock, minStock: supply.min_stock }) !== 'ok',
   );
+  const list = useMemo(
+    () =>
+      shoppingList(
+        supplies.map((supply) => ({
+          ...asCost(supply),
+          stock: supply.stock,
+          minStock: supply.min_stock,
+          initialStock: supply.initial_stock,
+          unit: supply.unit,
+          purchaseUnit: supply.purchase_unit,
+          active: supply.active,
+        })),
+      ),
+    [supplies],
+  );
   return (
     <>
       <div className="toolbar">
@@ -142,6 +161,11 @@ export function Inventario({ restaurantId }: { restaurantId: string }) {
           ))}
         </div>
         <span className="grow" />
+        {tab === 'insumos' && list.items.length ? (
+          <button className="btn btn-soft btn-sm" type="button" onClick={() => setShopping(true)}>
+            Lista de compras
+          </button>
+        ) : null}
         {tab === 'insumos' ? (
           <button className="btn btn-primary btn-sm" type="button" onClick={() => setEditing('nuevo')}>
             ＋ Insumo
@@ -336,6 +360,9 @@ export function Inventario({ restaurantId }: { restaurantId: string }) {
           }}
         />
       ) : null}
+      {shopping && list.items.length ? (
+        <ShoppingModal list={list} onClose={() => setShopping(false)} />
+      ) : null}
       {editing ? (
         <SupplyForm
           restaurantId={restaurantId}
@@ -346,6 +373,92 @@ export function Inventario({ restaurantId }: { restaurantId: string }) {
         />
       ) : null}
     </>
+  );
+}
+
+/** Lista de compras (D66): copiar o compartir por WhatsApp sin destinatario. */
+function ShoppingModal({ list, onClose }: { list: ReturnType<typeof shoppingList>; onClose: () => void }) {
+  const toast = useToast();
+  const text = shoppingText(
+    list,
+    new Date().toLocaleDateString('es-CO', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'America/Bogota',
+    }),
+    money,
+  );
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Lista copiada.');
+    } catch {
+      // Respaldo: portapapeles sin permiso o fuera de HTTPS.
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', '');
+      area.className = 'inv-copy-fallback';
+      document.body.appendChild(area);
+      area.select();
+      let ok: boolean;
+      try {
+        ok = document.execCommand('copy');
+      } catch {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      toast(ok ? 'Lista copiada.' : 'No pudimos copiar. Usa Compartir por WhatsApp.');
+    }
+  }
+  return (
+    <Modal title="Lista de compras" onClose={onClose}>
+      <div className="table-wrap">
+        <table className="inv-shopping">
+          <thead>
+            <tr>
+              <th>Insumo</th>
+              <th className="num">Comprar</th>
+              <th className="num">Costo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.items.map((item) => (
+              <tr key={item.id}>
+                <td>
+                  <b>{item.name}</b>
+                </td>
+                <td className="num" data-label="Comprar">
+                  {qtyText(item.qty)} {item.purchaseUnit}
+                </td>
+                <td className={`num ${item.cost === null ? 'inv-missing' : ''}`} data-label="Costo">
+                  {item.cost === null ? 'sin costo' : money(item.cost)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="inv-shopping-total">
+        <b>Total estimado: {money(list.total)}</b>
+        {list.withoutCost ? (
+          <small className="block inv-missing">Sin contar {list.withoutCost} insumo(s) sin costo.</small>
+        ) : null}
+      </p>
+      <div className="btn-row">
+        <button className="btn btn-soft" type="button" onClick={() => void copy()}>
+          Copiar
+        </button>
+        <a
+          className="btn btn-primary"
+          href={whatsappShareUrl(text)}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Compartir por WhatsApp
+        </a>
+      </div>
+    </Modal>
   );
 }
 

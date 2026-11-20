@@ -2,6 +2,15 @@
 import { getSupabase } from '../lib/supabase';
 import { readPublicEnv } from '../lib/env';
 import { fitInside, mediaUrl } from '../core/media';
+import {
+  COPY_LIMITS,
+  COPY_SECTIONS,
+  DEFAULT_CTA,
+  DEFAULT_FINAL,
+  DEFAULT_TITLES,
+  LEAD_DEFAULTS as CORE_LEAD_DEFAULTS,
+  type CopySection,
+} from '../core/site-copy';
 
 export interface EditCategory {
   id: string;
@@ -145,20 +154,164 @@ export async function uploadPhoto(restaurantId: string, file: File): Promise<str
   return path;
 }
 
+export interface SectionCopy {
+  kicker?: string;
+  title?: string;
+  text?: string;
+}
+export interface SiteBlocks {
+  promo?: {
+    visible?: boolean;
+    tag?: string;
+    title?: string;
+    text?: string;
+    cta?: string;
+    coupon?: string;
+    image?: string | undefined;
+  };
+  tour?: {
+    kicker?: string;
+    title?: string;
+    text?: string;
+    cards?: Array<{ title: string; text: string }>;
+    image?: string | undefined;
+  };
+  titles?: Partial<Record<CopySection, SectionCopy>>;
+  final?: SectionCopy & { button?: string };
+  cta?: { primary?: string; whatsapp?: string; note_closed?: string; note_open?: string };
+}
+
+/** Secciones del inicio con antetítulo, título y texto editables (D56). Fuente: src/core/site-copy.ts. */
+export { COPY_SECTIONS };
+export type { CopySection };
+
+/**
+ * Textos por defecto de src/core/site-copy.ts: son el marcador de cada campo y lo que se ve si queda vacío.
+ * Donde el sitio no tiene texto fijo (`text: null`: lleva enlace o conteos) el marcador es aproximado.
+ */
+const APPROX_TEXT: Partial<Record<CopySection, string>> = {
+  arsenal: 'Los que más salen. ¿Quieres verlo todo? Ve a la carta completa.',
+  carta: 'Platos y adicionales salidos del barril. Precios en pesos, impoconsumo incluido.',
+  cobertura: 'Por ahora somos solo domicilio. El punto físico viene en camino.',
+};
+export const COPY_DEFAULTS: {
+  titles: Record<CopySection, Required<SectionCopy>>;
+  final: Required<SectionCopy> & { button: string };
+  cta: { primary: string; whatsapp: string; note_closed: string; note_open: string };
+} = {
+  titles: Object.fromEntries(
+    COPY_SECTIONS.map((key) => {
+      const base = DEFAULT_TITLES[key];
+      return [key, { kicker: base.kicker, title: base.title, text: base.text ?? APPROX_TEXT[key] ?? '' }];
+    }),
+  ) as Record<CopySection, Required<SectionCopy>>,
+  final: { ...DEFAULT_FINAL },
+  cta: {
+    primary: DEFAULT_CTA.primary,
+    whatsapp: DEFAULT_CTA.whatsapp,
+    note_closed: DEFAULT_CTA.noteClosed,
+    note_open: DEFAULT_CTA.noteOpen,
+  },
+};
+
+/** Límites de cada campo (la base valida el jsonb completo; estos evitan pasarse). */
+export const COPY_MAX = COPY_LIMITS;
+
+/** Recorta y quita lo vacío: un campo vacío no se guarda y la página usa el texto por defecto (D56). */
+function compact<T extends object>(group: T | undefined): Partial<T> | undefined {
+  if (!group) return undefined;
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(group) as Array<[string, string | undefined]>) {
+    const clean = (value ?? '').replace(/\r\n/g, '\n').trim();
+    if (clean) out[key] = clean;
+  }
+  return Object.keys(out).length ? (out as Partial<T>) : undefined;
+}
+
+export function cleanBlocks(blocks: SiteBlocks): SiteBlocks {
+  const next: SiteBlocks = { ...blocks };
+  const titles: Partial<Record<CopySection, SectionCopy>> = {};
+  for (const key of COPY_SECTIONS) {
+    const group = compact(blocks.titles?.[key]);
+    if (group) titles[key] = group;
+  }
+  if (Object.keys(titles).length) next.titles = titles;
+  else delete next.titles;
+  const final = compact(blocks.final);
+  if (final) next.final = final;
+  else delete next.final;
+  const cta = compact(blocks.cta);
+  if (cta) next.cta = cta;
+  else delete next.cta;
+  return next;
+}
+
+/** Textos del cupón de bienvenida (events.lead_copy, máx. 600 caracteres en total). */
+export interface LeadCopy {
+  kicker?: string;
+  title?: string;
+  text?: string;
+  button?: string;
+}
+export const LEAD_DEFAULTS: Required<LeadCopy> = CORE_LEAD_DEFAULTS;
+export const LEAD_COPY_LIMIT = 600;
+/** Largo como lo mide la base (`lead_copy::text`): jsonb agrega un espacio tras cada ":" y cada ",". */
+export function leadCopyLength(copy: LeadCopy): number {
+  const clean = compact({ ...copy }) ?? {};
+  const keys = Object.keys(clean).length;
+  return JSON.stringify(clean).length + (keys ? 2 * keys - 1 : 0);
+}
+/** null = todo vacío (se usan los textos por defecto). */
+export function cleanLeadCopy(copy: LeadCopy): LeadCopy | null {
+  return compact({ ...copy }) ?? null;
+}
+
+export async function loadLeadCopy(eventId: string): Promise<LeadCopy> {
+  const { data, error } = await getSupabase().from('events').select('lead_copy').eq('id', eventId).single();
+  if (error || !data) throw new Error('No pudimos cargar los textos del cupón.');
+  const raw = data.lead_copy;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: LeadCopy = {};
+  for (const key of ['kicker', 'title', 'text', 'button'] as const) {
+    const value = (raw as Record<string, unknown>)[key];
+    if (typeof value === 'string') out[key] = value;
+  }
+  return out;
+}
+
+export async function saveLeadCopy(eventId: string, copy: LeadCopy): Promise<void> {
+  if (leadCopyLength(copy) > LEAD_COPY_LIMIT) throw new Error('Los textos del cupón son muy largos.');
+  const { error } = await getSupabase()
+    .from('events')
+    .update({ lead_copy: cleanLeadCopy(copy) })
+    .eq('id', eventId);
+  fail(error, 'los textos del cupón');
+}
+
+/** Hora estimada tal como la ve el cliente ahora mismo (D61): el texto sale de la base, no se calcula aquí. */
+export async function loadEtaPreview(): Promise<string | null> {
+  const { data, error } = await getSupabase().rpc('ordering_status', {
+    p_restaurant: readPublicEnv().PUBLIC_RESTAURANT_SLUG,
+  });
+  if (error || !data || typeof data !== 'object' || Array.isArray(data)) return null;
+  const eta = (data as { eta?: unknown }).eta;
+  return typeof eta === 'string' && eta ? eta : null;
+}
+
 export interface SiteSettings {
   hero: { title?: string; kicker?: string; text?: string };
   sections: Record<string, boolean>;
   channels: Record<string, { visible: boolean; url: string }>;
-  blocks: {
-    promo?: { visible?: boolean; tag?: string; title?: string; text?: string; cta?: string; coupon?: string };
-    tour?: { kicker?: string; title?: string; text?: string; cards?: Array<{ title: string; text: string }> };
-  };
+  blocks: SiteBlocks;
   whatsapp: string | null;
   instagram: string | null;
   tiktok: string | null;
   hours: Array<[string, string]>;
   delivery_min: number;
   delivery_eta: string;
+  eta_dynamic: boolean;
+  eta_per_order_min: number;
+  eta_max_extra_min: number;
   accepting_orders: boolean;
   store_open: boolean;
   store_address: string | null;
@@ -171,7 +324,7 @@ export interface SiteSettings {
   updated_at: string;
 }
 const SETTINGS_COLUMNS =
-  'hero, sections, channels, blocks, whatsapp, instagram, tiktok, hours, delivery_min, delivery_eta, accepting_orders, store_open, store_address, store_maps_url, store_lat, store_lng, store_hours, pickup_enabled, published_at, updated_at';
+  'hero, sections, channels, blocks, whatsapp, instagram, tiktok, hours, delivery_min, delivery_eta, eta_dynamic, eta_per_order_min, eta_max_extra_min, accepting_orders, store_open, store_address, store_maps_url, store_lat, store_lng, store_hours, pickup_enabled, published_at, updated_at';
 
 export async function loadSettings(restaurantId: string): Promise<SiteSettings> {
   const { data, error } = await getSupabase()

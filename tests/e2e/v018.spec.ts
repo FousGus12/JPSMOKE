@@ -264,6 +264,8 @@ test('admin anula un entregado como "Pedido de prueba": insumos vuelven y sale d
   await expect(modal.getByRole('alert')).toContainText('Elige un motivo');
   await modal.getByLabel('Pedido de prueba').check();
   await expect(modal).toContainText('tampoco cuenta como cancelado');
+  // D59: desde Entregado pregunta si devuelve insumos (por defecto No); esta prueba verifica que vuelven.
+  await modal.getByLabel('Sí, devolverlos').check();
   await modal.getByRole('button', { name: 'Anular pedido' }).click();
   // El aviso sale en el toast y, oculto, en la región role=status del tablero (lectores de pantalla).
   await expect(page.locator('.toast').getByText(`${voidCode} anulado`)).toBeVisible();

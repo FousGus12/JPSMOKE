@@ -19,15 +19,31 @@ export function forcedWelcome(param: string | null): WelcomeMode | null {
   return MODES.includes(param as WelcomeMode) ? (param as WelcomeMode) : null;
 }
 
-/** Qué mostrar: lo forzado manda; si no, el modo configurado salvo que ya se vio hoy. Sin evento, nada. */
+/**
+ * Vigencia por día de Bogotá (AAAA-MM-DD, inclusivo). Sin fecha = sin límite por ese lado. Lo publicado
+ * caduca solo aunque no se vuelva a publicar (D62). Las fechas ISO se comparan como texto.
+ */
+export function isCurrent(today: string, startsOn?: string | null, endsOn?: string | null): boolean {
+  if (startsOn && today < startsOn) return false;
+  if (endsOn && today > endsOn) return false;
+  return true;
+}
+
+/**
+ * Qué mostrar: sin evento o fuera de sus fechas, nada (ni forzado: una bienvenida vencida no se ve, D62);
+ * si no, lo forzado manda; si no, el modo configurado salvo que ya se vio hoy.
+ */
 export function welcomeToShow(options: {
   forced: WelcomeMode | null;
   configured: WelcomeMode;
   hasEvent: boolean;
   lastSeen: string | null;
   today: string;
+  startsOn?: string | null | undefined;
+  endsOn?: string | null | undefined;
 }): WelcomeMode {
   if (!options.hasEvent) return 'ninguna';
+  if (!isCurrent(options.today, options.startsOn, options.endsOn)) return 'ninguna';
   if (options.forced) return options.forced;
   return options.lastSeen === options.today ? 'ninguna' : options.configured;
 }

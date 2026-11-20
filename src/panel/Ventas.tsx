@@ -3,6 +3,8 @@ import { formatCop as money } from '../core/money';
 import { CHANNEL_LABEL, type OrderChannel } from '../core/orders';
 import { percentChange, toCsv, voidedAfterClose, weeklyText, type WeeklyReport } from '../core/sales';
 import { Columns, Rows } from './charts';
+import { loadExternalSummary, type ExternalSummary } from './import-data';
+import { Importar } from './Importar';
 import {
   closeCash,
   exportSales,
@@ -29,10 +31,13 @@ const dayLabel = (iso: string) =>
 const hourLabel = (hour: number) => `${hour % 12 || 12} ${hour < 12 ? 'a. m.' : 'p. m.'}`;
 const todayIso = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
 
-/** Ventas y estadísticas (F8, solo admin). */
-export function Ventas({ restaurant }: { restaurant: string }) {
+/** Ventas y estadísticas (F8, solo admin). Rappi y DiDi importados van aparte, fuera de caja (D64). */
+export function Ventas({ restaurant, restaurantId }: { restaurant: string; restaurantId: string }) {
   const toast = useToast();
+  const [tab, setTab] = useState<'local' | 'plataformas'>('local');
   const [days, setDays] = useState(30);
+  const [external, setExternal] = useState<ExternalSummary | null>(null);
+  const [externalFailed, setExternalFailed] = useState(false);
   const [sales, setSales] = useState<SalesSummary | null>(null);
   const [cash, setCash] = useState<CashDay | null>(null);
   const [weekly, setWeekly] = useState<WeeklyReport | null>(null);
@@ -54,6 +59,21 @@ export function Ventas({ restaurant }: { restaurant: string }) {
     void reload();
   }, [reload]);
 
+  // Aparte: si falla (o la base aún no tiene D64) no tumba el resto de Ventas.
+  const reloadExternal = useCallback(
+    () =>
+      loadExternalSummary(days)
+        .then((summary) => {
+          setExternal(summary);
+          setExternalFailed(false);
+        })
+        .catch(() => setExternalFailed(true)),
+    [days],
+  );
+  useEffect(() => {
+    void reloadExternal();
+  }, [reloadExternal]);
+
   async function download() {
     try {
       const rows = await exportSales(days);
@@ -73,6 +93,14 @@ export function Ventas({ restaurant }: { restaurant: string }) {
   const change = sales ? percentChange(sales.total, sales.previous_total) : null;
   return (
     <>
+      <div className="seg ventas-tabs" role="group" aria-label="Vista de ventas">
+        <button type="button" aria-pressed={tab === 'local'} onClick={() => setTab('local')}>
+          Ventas del local
+        </button>
+        <button type="button" aria-pressed={tab === 'plataformas'} onClick={() => setTab('plataformas')}>
+          Ventas de Rappi y DiDi
+        </button>
+      </div>
       <div className="toolbar">
         <div className="seg" role="group" aria-label="Periodo">
           {PERIODS.map(([value, label]) => (
@@ -82,11 +110,23 @@ export function Ventas({ restaurant }: { restaurant: string }) {
           ))}
         </div>
         <span className="grow" />
-        <button className="btn btn-soft btn-sm" type="button" onClick={() => void download()}>
-          Exportar CSV
-        </button>
+        {tab === 'local' ? (
+          <button className="btn btn-soft btn-sm" type="button" onClick={() => void download()}>
+            Exportar CSV
+          </button>
+        ) : null}
       </div>
-      {!sales ? (
+      {tab === 'plataformas' ? (
+        <>
+          <Plataformas summary={external} failed={externalFailed} />
+          <Importar
+            restaurantId={restaurantId}
+            summary={external}
+            failed={externalFailed}
+            onChanged={() => void reloadExternal()}
+          />
+        </>
+      ) : !sales ? (
         <p className="muted">Cargando ventas…</p>
       ) : (
         <>
@@ -218,15 +258,83 @@ export function Ventas({ restaurant }: { restaurant: string }) {
               🛡️ <b>{sales.blocked} pedidos falsos frenados</b> en el periodo.
             </div>
           ) : null}
+          <Plataformas summary={external} failed={externalFailed} onOpen={() => setTab('plataformas')} />
         </>
       )}
-      <div className="grid-2">
-        {cash ? (
-          <CashClose key={cash.closed?.closed_at ?? 'abierta'} cash={cash} onClosed={() => void reload()} />
-        ) : null}
-        {weekly ? <Weekly report={weekly} restaurant={restaurant} /> : null}
-      </div>
+      {tab === 'local' ? (
+        <div className="grid-2">
+          {cash ? (
+            <CashClose key={cash.closed?.closed_at ?? 'abierta'} cash={cash} onClosed={() => void reload()} />
+          ) : null}
+          {weekly ? <Weekly report={weekly} restaurant={restaurant} /> : null}
+        </div>
+      ) : null}
     </>
+  );
+}
+
+/** Rappi y DiDi importados (D64): aparte de la caja y de los ingresos del local. */
+function Plataformas({
+  summary,
+  failed,
+  onOpen,
+}: {
+  summary: ExternalSummary | null;
+  failed: boolean;
+  onOpen?: () => void;
+}) {
+  const empty = summary && summary.orders === 0 && summary.matched === 0;
+  return (
+    <section className="card" aria-label="Plataformas">
+      <div className="card-head">
+        <div>
+          <h2>Plataformas</h2>
+          <p>Ventas importadas de Rappi y DiDi · fuera de caja y de los ingresos del local</p>
+        </div>
+        {onOpen ? (
+          <button className="btn btn-soft btn-sm" type="button" onClick={onOpen}>
+            Importar archivo
+          </button>
+        ) : null}
+      </div>
+      {failed ? (
+        <p className="muted">No pudimos cargar las ventas de Rappi y DiDi.</p>
+      ) : !summary ? (
+        <p className="muted">Cargando…</p>
+      ) : empty ? (
+        <p className="muted">Sin ventas importadas en el periodo.</p>
+      ) : (
+        <>
+          <div className="cash-expected">
+            <small>Vendido en plataformas</small>
+            <b data-testid="plataformas-total">{money(summary.total)}</b>
+            <span className="muted">
+              {summary.orders} {summary.orders === 1 ? 'pedido' : 'pedidos'}
+            </span>
+          </div>
+          <Rows
+            rows={summary.by_channel.map((row) => ({
+              label: CHANNEL_LABEL[row.key as OrderChannel] ?? row.key,
+              value: row.total,
+              text: `${money(row.total)} (${row.orders})`,
+            }))}
+          />
+          {summary.commission ? (
+            <p className="muted">
+              Comisiones de las plataformas: {money(summary.commission)} · neto{' '}
+              {money(summary.total - summary.commission)}
+            </p>
+          ) : null}
+          {summary.matched ? (
+            <p className="note">
+              {summary.matched}{' '}
+              {summary.matched === 1 ? 'venta ya estaba registrada' : 'ventas ya estaban registradas'} a mano
+              ({money(summary.matched_total)}): cuentan en los ingresos del local, no aquí.
+            </p>
+          ) : null}
+        </>
+      )}
+    </section>
   );
 }
 

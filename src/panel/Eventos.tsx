@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useState, type SyntheticEvent } from 'react';
 import { formatPhone } from '../core/orders';
-import { photoUrl, uploadPhoto } from './editor';
+import {
+  LEAD_COPY_LIMIT,
+  LEAD_DEFAULTS,
+  leadCopyLength,
+  loadLeadCopy,
+  photoUrl,
+  saveLeadCopy,
+  uploadPhoto,
+  type LeadCopy,
+} from './editor';
 import {
   deleteEvent,
   loadCoupons,
@@ -37,6 +46,13 @@ const shortDate = (iso: string) =>
     timeZone: 'America/Bogota',
   });
 
+/** Día siguiente (YYYY-MM-DD) sin pasar por zonas horarias. */
+const nextDay = (iso: string) => {
+  const date = new Date(`${iso.slice(0, 10)}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+};
+
 /** Bienvenida de la página: modo global, evento que se usa, vista previa y avisos. */
 export function Bienvenida({
   restaurantId,
@@ -56,6 +72,7 @@ export function Bienvenida({
   const [mode, setMode] = useState<Mode>('completa');
   const [editing, setEditing] = useState<EditEvent | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [leadLoaded, setLeadLoaded] = useState<{ id: string; copy: LeadCopy } | null>(null);
 
   const reload = useCallback(
     () =>
@@ -97,7 +114,21 @@ export function Bienvenida({
   const intro = events.find((event) => event.show_intro) ?? null;
   const coupon = intro?.captures_leads ? coupons.find((item) => item.id === intro.coupon_id) : undefined;
   const expired = intro ? intro.ends_on < today() : false;
+  const notYet = intro ? intro.starts_on > today() : false;
   const off = mode === 'ninguna';
+  const introId = intro?.captures_leads ? intro.id : null;
+  const introEdits = editing ? 1 : 0;
+  useEffect(() => {
+    if (!introId) return;
+    let alive = true;
+    loadLeadCopy(introId)
+      .then((copy) => alive && setLeadLoaded({ id: introId, copy }))
+      .catch(() => alive && setLeadLoaded({ id: introId, copy: {} }));
+    return () => {
+      alive = false;
+    };
+  }, [introId, introEdits]);
+  const leadCopy: LeadCopy = introId && leadLoaded?.id === introId ? leadLoaded.copy : {};
 
   return (
     <section className="card bienvenida" data-testid="bienvenida">
@@ -145,7 +176,14 @@ export function Bienvenida({
             <>
               {expired ? (
                 <p className="note bienvenida-warn" role="alert">
-                  La bienvenida ya pasó su fecha; cámbiala o apágala.
+                  La bienvenida dejó de verse sola el {shortDate(nextDay(intro.ends_on))}
+                  {intro.captures_leads ? ' y ya no entrega cupón' : ''}. Cambia las fechas, elige otro evento
+                  o apágala.
+                </p>
+              ) : null}
+              {notYet ? (
+                <p className="note bienvenida-warn">
+                  Esta bienvenida empieza a verse el {shortDate(intro.starts_on)}.
                 </p>
               ) : null}
               <div className="bienvenida-info">
@@ -162,6 +200,15 @@ export function Bienvenida({
                       <dd>{intro.cta_label}</dd>
                       <dt>Cupón</dt>
                       <dd>{coupon ? `${coupon.code} · ${coupon.title}` : 'No entrega cupón'}</dd>
+                      {intro.captures_leads ? (
+                        <>
+                          <dt>Textos del cupón</dt>
+                          <dd data-testid="lead-copy-resumen">
+                            {leadCopy.title || LEAD_DEFAULTS.title}
+                            {Object.keys(leadCopy).length ? '' : ' (textos por defecto)'}
+                          </dd>
+                        </>
+                      ) : null}
                       <dt>Fechas</dt>
                       <dd>
                         {shortDate(intro.starts_on)} → {shortDate(intro.ends_on)}
@@ -498,10 +545,32 @@ function EventForm({
     ends_on: event?.ends_on ?? today(),
   });
   const [image, setImage] = useState<string | null>(event?.image_path ?? null);
+  const [lead, setLead] = useState<LeadCopy>({});
+  const [leadReady, setLeadReady] = useState(!event?.captures_leads);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const set = (key: keyof typeof form) => (change: { target: { value: string } }) =>
     setForm({ ...form, [key]: change.target.value });
+
+  useEffect(() => {
+    if (!event?.captures_leads) return;
+    let alive = true;
+    loadLeadCopy(event.id)
+      .then((copy) => {
+        if (!alive) return;
+        setLead(copy);
+        setLeadReady(true);
+      })
+      .catch((failure: unknown) => {
+        if (alive) setError(failure instanceof Error ? failure.message : 'No pudimos cargar el cupón.');
+      });
+    return () => {
+      alive = false;
+    };
+  }, [event]);
+  const leadLength = leadCopyLength(lead);
+  const setLeadField = (key: keyof LeadCopy) => (change: { target: { value: string } }) =>
+    setLead({ ...lead, [key]: change.target.value });
 
   async function onPhoto(file: File | undefined) {
     if (!file) return;
@@ -520,6 +589,10 @@ function EventForm({
     change.preventDefault();
     if (form.title.trim().length < 3) return setError('El título es obligatorio.');
     if (form.ends_on < form.starts_on) return setError('La fecha de fin no puede ser antes del inicio.');
+    if (event?.captures_leads && !leadReady)
+      return setError('Espera a que carguen los textos del cupón para no borrarlos.');
+    if (leadLength > LEAD_COPY_LIMIT)
+      return setError(`Los textos del cupón suman ${leadLength} de ${LEAD_COPY_LIMIT} caracteres.`);
     setBusy(true);
     setError('');
     try {
@@ -534,6 +607,7 @@ function EventForm({
         ends_on: form.ends_on,
         image_path: image,
       });
+      if (event?.captures_leads) await saveLeadCopy(event.id, lead);
       toast('Evento guardado');
       onSaved();
       onClose();
@@ -638,6 +712,66 @@ function EventForm({
         </div>
         {image ? (
           <img className="thumb thumb-lg" src={photoUrl(image) ?? ''} alt="Imagen del evento" />
+        ) : null}
+        {event?.captures_leads ? (
+          <fieldset className="lead-copy" data-testid="lead-copy">
+            <legend>Textos del aviso con cupón</legend>
+            <p className="muted small">
+              Lo gris es el texto actual; si dejas un campo vacío se usa ese. Enter en el título hace un salto
+              de línea.
+            </p>
+            <div className="form-2">
+              <div className="field">
+                <label htmlFor="lc-kicker">Antetítulo del cupón</label>
+                <input
+                  className="input"
+                  id="lc-kicker"
+                  maxLength={40}
+                  placeholder={LEAD_DEFAULTS.kicker}
+                  value={lead.kicker ?? ''}
+                  onChange={setLeadField('kicker')}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="lc-button">Botón del cupón</label>
+                <input
+                  className="input"
+                  id="lc-button"
+                  maxLength={30}
+                  placeholder={LEAD_DEFAULTS.button}
+                  value={lead.button ?? ''}
+                  onChange={setLeadField('button')}
+                />
+              </div>
+              <div className="field span-2">
+                <label htmlFor="lc-title">Título del cupón</label>
+                <textarea
+                  className="textarea"
+                  id="lc-title"
+                  rows={2}
+                  maxLength={90}
+                  placeholder={LEAD_DEFAULTS.title}
+                  value={lead.title ?? ''}
+                  onChange={setLeadField('title')}
+                />
+              </div>
+              <div className="field span-2">
+                <label htmlFor="lc-text">Texto del cupón</label>
+                <textarea
+                  className="textarea"
+                  id="lc-text"
+                  rows={2}
+                  maxLength={240}
+                  placeholder={LEAD_DEFAULTS.text}
+                  value={lead.text ?? ''}
+                  onChange={setLeadField('text')}
+                />
+              </div>
+            </div>
+            <small className={leadLength > LEAD_COPY_LIMIT ? 'ajustes-error' : 'muted'}>
+              {leadLength} de {LEAD_COPY_LIMIT} caracteres
+            </small>
+          </fieldset>
         ) : null}
         {error ? (
           <p className="form-error" role="alert">

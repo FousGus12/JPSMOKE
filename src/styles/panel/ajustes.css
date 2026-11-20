@@ -46,3 +46,28 @@
 .canal-row > .switch {
   grid-area: 2 / 2;
 }
+
+/* v0.19 · Inicio editable (D56): una tarjeta por sección y hora estimada. */
+.copy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+.copy-card {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 12px;
+  border: 1px solid var(--line, currentColor);
+  border-radius: 10px;
+}
+.copy-card h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.copy-card .textarea {
+  min-height: 3.2rem;
+}
+.eta-preview {
+  margin: 8px 0 14px;
+}

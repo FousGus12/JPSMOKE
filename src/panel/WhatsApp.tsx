@@ -39,6 +39,7 @@ const KIND_LABEL: Record<WaKind, string> = {
   en_camino: 'Va en camino (al cliente)',
   informe_semanal: 'Informe semanal (a ti, lunes 8 a. m.)',
   stock_bajo: 'Insumo en el mínimo (a ti)',
+  pedido_cancelado: 'Pedido cancelado (al cliente)',
 };
 const KINDS = Object.keys(KIND_LABEL) as WaKind[];
 const STEP_CLASS: Record<StepState, string> = { listo: 'is-ok', falta: 'is-miss', pendiente: 'is-wait' };
@@ -117,6 +118,7 @@ export function WhatsApp({ restaurantId, restaurant }: { restaurantId: string; r
       items: 2,
       zone: 'Engativá',
       channel: 'web',
+      cancel_note: 'No llegamos a tu zona', // ejemplo para la vista previa de pedido_cancelado (D59)
     },
     report: { from: '2026-10-26', to: '2026-11-01', total: 1_250_000, orders: 41, star: 'La Ahumadora' },
   };
@@ -277,7 +279,7 @@ export function WhatsApp({ restaurantId, restaurant }: { restaurantId: string; r
           <div className="card-head">
             <div>
               <h2>Así se ven</h2>
-              <p>Los 5 mensajes que se registran en Meta, con datos de ejemplo</p>
+              <p>Los 6 mensajes que se registran en Meta, con datos de ejemplo</p>
             </div>
           </div>
           <div className="rows">

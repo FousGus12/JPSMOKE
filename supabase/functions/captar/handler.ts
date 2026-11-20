@@ -39,7 +39,15 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
   const res = result as { ok: boolean; reason?: string; coupon?: string; title?: string };
   if (!res.ok)
     return json(
-      { ok: false, error: res.reason === 'ya_registrado' ? 'ya_registrado' : 'datos_invalidos' },
+      {
+        ok: false,
+        error:
+          res.reason === 'ya_registrado'
+            ? 'ya_registrado'
+            : res.reason === 'vencido'
+              ? 'vencido'
+              : 'datos_invalidos',
+      },
       422,
       cors,
     );

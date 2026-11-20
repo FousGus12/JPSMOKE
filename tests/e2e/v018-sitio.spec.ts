@@ -2,7 +2,7 @@
 // Cobertura verificable con ubicación emulada, inicio de una pantalla en celular (con bienvenida real,
 // sin ?intro=ninguna) y con "reducir movimiento". Las pruebas de celular se saltan en el proyecto escritorio.
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
-import { RID, jumpTo, openCartJs, restoreZones, snapshotZones, sql } from './ayudas';
+import { RID, jumpTo, openCartJs, restoreZones, snapshotZones, sql, welcomeClock } from './ayudas';
 
 let zones = '';
 test.beforeAll(() => {
@@ -128,8 +128,10 @@ const metrics = (page: Page) =>
   });
 
 /** Entra con la bienvenida real del build (completa); salta si el build no la trae. */
-async function enterWelcome(page: Page, info: TestInfo) {
+async function enterWelcome(page: Page, info: TestInfo): Promise<number> {
   test.skip(info.project.name === 'escritorio', 'Inicio de una pantalla: solo celular');
+  // Día dentro de las fechas de la bienvenida (D62) con 2 días libres para la prueba de "al día siguiente".
+  const at = await welcomeClock(page, 2);
   await page.goto('/');
   const intro = page.locator('#intro');
   test.skip((await intro.count()) === 0, 'El build no trae bienvenida completa (evento con show_intro)');
@@ -139,6 +141,7 @@ async function enterWelcome(page: Page, info: TestInfo) {
   await intro.locator('button[data-intro-close]').click({ timeout: 2000 });
   await expect(intro).toBeHidden();
   await expect(page.locator('html')).not.toHaveClass(/is-locked/);
+  return at;
 }
 
 async function expectOneScreen(page: Page) {
@@ -190,7 +193,7 @@ test('celular: bienvenida inmediata, inicio de una pantalla y barra inferior al 
 });
 
 test('celular: la bienvenida sale una sola vez al día (D50)', async ({ page }, info) => {
-  await enterWelcome(page, info);
+  const at = await enterWelcome(page, info);
   const keys = await page.evaluate(() => Object.keys(localStorage));
   expect(keys.some((key) => /bienvenida/i.test(key))).toBe(true); // la marca vive en localStorage
 
@@ -201,7 +204,7 @@ test('celular: la bienvenida sale una sola vez al día (D50)', async ({ page }, 
   await expect(page.locator('html')).not.toHaveClass(/is-locked/);
 
   // Al día siguiente (36 h después) vuelve a salir.
-  await page.clock.setFixedTime(Date.now() + 36 * 3_600_000);
+  await page.clock.setFixedTime(at + 36 * 3_600_000);
   await page.reload();
   await expect(page.locator('#intro')).toBeVisible();
 });

@@ -1,6 +1,8 @@
 import { getSupabase } from './supabase';
 import { readPublicEnv } from './env';
 import { mediaUrl } from '../core/media';
+import { readCopy, readLeadCopy, type LeadCopy, type SiteCopy } from '../core/site-copy';
+import { thumbnail, type Thumb } from './images';
 
 export interface Product {
   id: string;
@@ -12,6 +14,8 @@ export interface Product {
   price: number;
   comboPrice: number | null;
   image: string | null;
+  /** Miniatura WebP 96/192 px para carrito y adiciones (null = se usa `image`). */
+  thumb: Thumb | null;
   available: boolean;
   featured: boolean;
   hero: boolean;
@@ -59,11 +63,18 @@ export interface SiteEvent {
   showStrip: boolean;
   showSection: boolean;
   capturesLeads: boolean;
+  /** Vigencia (día de Bogotá, AAAA-MM-DD): el navegador oculta lo vencido aunque no se republique (D62). */
+  startsOn: string;
+  endsOn: string;
+  /** Textos del aviso del cupón (D56); vacíos = los de siempre. */
+  leadCopy: LeadCopy;
 }
 export interface Review {
   author: string;
   stars: number;
   body: string;
+  /** Dónde se dejó la reseña real (D57). */
+  source: string;
 }
 export interface Blocks {
   promo: {
@@ -87,6 +98,8 @@ export interface SiteData {
   restaurant: { id: string; slug: string; name: string };
   hero: { title: string; kicker: string; text: string };
   blocks: Blocks;
+  /** Textos editables del inicio (D56). */
+  copy: SiteCopy;
   sections: Record<string, boolean>;
   channels: Record<'rappi' | 'didi', { visible: boolean; url: string }>;
   whatsapp: string | null;
@@ -174,17 +187,27 @@ export async function loadSiteData(): Promise<SiteData> {
     supabase
       .from('events')
       .select(
-        'id, title, kicker, body, image_path, cta_label, cta_href, show_intro, show_strip, show_section, captures_leads',
+        'id, title, kicker, body, image_path, cta_label, cta_href, show_intro, show_strip, show_section, captures_leads, starts_on, ends_on, lead_copy',
       )
       .eq('restaurant_id', rid)
       .order('position'),
-    supabase.from('reviews').select('author, stars, body').eq('restaurant_id', rid).order('created_at'),
+    // Solo aprobadas (RLS de anon); orden del panel (D57).
+    supabase
+      .from('reviews')
+      .select('author, stars, body, source')
+      .eq('restaurant_id', rid)
+      .eq('approved', true)
+      .order('position')
+      .order('review_date', { ascending: false }),
   ]);
   const st = must(settings, 'los ajustes');
+  const productRows = must(products, 'la carta');
+  const thumbs = await Promise.all(productRows.map((row) => thumbnail(media(row.image_path))));
   return {
     restaurant,
     hero: { title: restaurant.name, kicker: '', text: '', ...(st.hero as object) },
     blocks: readBlocks(st.blocks as Partial<Record<'promo' | 'tour', Record<string, unknown>>> | null, media),
+    copy: readCopy(st.blocks),
     sections: (st.sections ?? {}) as Record<string, boolean>,
     channels: {
       rappi: { visible: false, url: '' },
@@ -212,7 +235,7 @@ export async function loadSiteData(): Promise<SiteData> {
       ...category,
       isAddons: is_addons,
     })),
-    products: must(products, 'la carta').map((row) => ({
+    products: productRows.map((row, i) => ({
       id: row.id,
       categoryId: row.category_id,
       slug: row.slug,
@@ -222,6 +245,7 @@ export async function loadSiteData(): Promise<SiteData> {
       price: row.price,
       comboPrice: row.combo_price,
       image: media(row.image_path),
+      thumb: thumbs[i] ?? null,
       available: row.available,
       featured: row.featured,
       hero: row.hero,
@@ -256,6 +280,9 @@ export async function loadSiteData(): Promise<SiteData> {
       showStrip: row.show_strip,
       showSection: row.show_section,
       capturesLeads: row.captures_leads,
+      startsOn: row.starts_on,
+      endsOn: row.ends_on,
+      leadCopy: readLeadCopy(row.lead_copy),
     })),
     reviews: must(reviews, 'las reseñas'),
   };
@@ -277,18 +304,20 @@ export function clientData(site: SiteData, env = readPublicEnv()) {
     acceptingOrders: site.acceptingOrders,
     pickupEnabled: site.store.pickup,
     storeAddress: site.store.address,
-    products: site.products.map(({ id, name, price, comboPrice, image, available, categoryId }) => ({
+    products: site.products.map(({ id, name, price, comboPrice, image, thumb, available, categoryId }) => ({
       id,
       name,
       price,
       comboPrice,
       image,
+      thumb,
       available,
       addon: site.categories.some((category) => category.id === categoryId && category.isAddons),
     })),
     zones: site.zones.filter((zone) => zone.active),
     payments: site.payments,
     coupons: site.coupons,
+    // Incluye startsOn/endsOn (caduca sola, D62) y leadCopy.
     introEvent: site.events.find((event) => event.showIntro) ?? null,
   };
 }

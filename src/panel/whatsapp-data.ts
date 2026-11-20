@@ -4,7 +4,8 @@ import { getSupabase } from '../lib/supabase';
 export type WaMode = 'manual' | 'prueba' | 'activo';
 export interface WaLog {
   id: string;
-  kind: 'pedido_recibido' | 'aviso_negocio' | 'en_camino' | 'informe_semanal' | 'stock_bajo';
+  kind:
+    'pedido_recibido' | 'aviso_negocio' | 'en_camino' | 'informe_semanal' | 'stock_bajo' | 'pedido_cancelado';
   status: 'pendiente' | 'enviado' | 'simulado' | 'fallido' | 'omitido';
   error: string | null;
   created_at: string;
@@ -125,9 +126,9 @@ export function activationSteps(phone: string, logs: WaLog[]): Step[] {
     },
     {
       key: 'plantillas',
-      title: 'Las 5 plantillas aprobadas por Meta',
+      title: 'Las 6 plantillas aprobadas por Meta',
       detail:
-        'pedido_recibido, aviso_negocio, en_camino, informe_semanal y stock_bajo. Los textos están abajo, en "Así se ven".',
+        'pedido_recibido, aviso_negocio, en_camino, informe_semanal, stock_bajo y pedido_cancelado. Los textos están abajo, en "Así se ven".',
       state: templates,
       note: note(templates),
     },

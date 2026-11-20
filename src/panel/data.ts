@@ -1,4 +1,5 @@
 // Datos del panel de pedidos (F5). Todo pasa por RLS y por funciones que validan el rol en la base.
+import { readPublicEnv } from '../lib/env';
 import { getSupabase } from '../lib/supabase';
 import { statusErrorText, type OrderChannel, type OrderStatus, type StaffRole } from '../core/orders';
 
@@ -23,6 +24,13 @@ export interface PanelOrder {
   coupon_code: string | null;
   gift: string | null;
   cancel_reason: string | null;
+  /** Motivo que ve el cliente (D59). */
+  cancel_public: string | null;
+  /** Al anular: si los insumos volvieron (D59); null si no se anuló. */
+  supplies_restored: boolean | null;
+  /** Estado desde el que se anuló (D42). */
+  voided_from: OrderStatus | null;
+  is_test: boolean;
   created_at: string;
   order_items: Array<{
     id: string;
@@ -33,11 +41,11 @@ export interface PanelOrder {
     combo: boolean;
     unit_price: number;
   }>;
-  order_events: Array<{ status: OrderStatus; at: string }>;
+  order_events: Array<{ status: OrderStatus; at: string; by_user: string | null }>;
 }
 
 const ORDER_COLUMNS =
-  'id, code, status, channel, fulfillment, customer_name, phone, address, barrio, zone_name, notes, payment_label, cash_with, subtotal, discount, delivery_fee, total, coupon_code, gift, cancel_reason, created_at, order_items(id, parent_item_id, position, name, qty, combo, unit_price), order_events(status, at)';
+  'id, code, status, channel, fulfillment, customer_name, phone, address, barrio, zone_name, notes, payment_label, cash_with, subtotal, discount, delivery_fee, total, coupon_code, gift, cancel_reason, cancel_public, supplies_restored, voided_from, is_test, created_at, order_items(id, parent_item_id, position, name, qty, combo, unit_price), order_events(status, at, by_user)';
 
 /** Pedidos de las últimas 36 horas (abiertos de ayer + todo lo de hoy). */
 export async function loadOrders(): Promise<PanelOrder[]> {
@@ -51,13 +59,67 @@ export async function loadOrders(): Promise<PanelOrder[]> {
   return (data ?? []) as unknown as PanelOrder[];
 }
 
-export async function setStatus(orderId: string, status: OrderStatus, reason?: string): Promise<void> {
-  const { error } = await getSupabase().rpc('set_order_status', {
+/** Al anular o cancelar (D59): motivo público opcional y si los insumos vuelven (solo cuenta desde En el barril). */
+export interface CancelOptions {
+  publicReason?: string | null;
+  restore?: boolean;
+}
+
+function statusArgs(orderId: string, status: OrderStatus, reason?: string, options: CancelOptions = {}) {
+  return {
     p_order: orderId,
     p_status: status,
     p_reason: reason ?? null,
-  });
+    p_public_reason: options.publicReason ?? null,
+    p_restore: options.restore ?? true,
+  };
+}
+
+export async function setStatus(
+  orderId: string,
+  status: OrderStatus,
+  reason?: string,
+  options?: CancelOptions,
+): Promise<void> {
+  const { error } = await getSupabase().rpc('set_order_status', statusArgs(orderId, status, reason, options));
   if (error) throw new Error(statusErrorText(error));
+}
+
+/** Token de la sesión actual, para enviar un cambio al cerrar la pestaña (D60). null sin sesión. */
+export async function sessionToken(): Promise<string | null> {
+  const { data } = await getSupabase().auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
+/**
+ * Envía el cambio de estado aunque la pestaña se esté cerrando (`fetch` con keepalive al RPC). Es síncrono a
+ * propósito: en `pagehide` no hay tiempo de esperar promesas. La base valida igual que con setStatus.
+ */
+export function setStatusKeepalive(orderId: string, status: OrderStatus, token: string): void {
+  const env = readPublicEnv();
+  try {
+    void fetch(`${env.PUBLIC_SUPABASE_URL}/rest/v1/rpc/set_order_status`, {
+      method: 'POST',
+      keepalive: true,
+      headers: {
+        apikey: env.PUBLIC_SUPABASE_ANON_KEY,
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(statusArgs(orderId, status)),
+    }).catch(() => undefined);
+  } catch {
+    // Sin red o navegador sin keepalive: el tablero lo mostrará sin cambiar al volver.
+  }
+}
+
+/** Nombres del equipo por usuario (RLS: solo el propio restaurante), para "quién" en Cancelados de hoy. */
+export async function loadStaffNames(): Promise<Map<string, string>> {
+  const { data, error } = await getSupabase().from('staff').select('user_id, full_name');
+  if (error || !data) return new Map();
+  return new Map(
+    (data as Array<{ user_id: string; full_name: string }>).map((row) => [row.user_id, row.full_name]),
+  );
 }
 
 /** Rol de quien usa el panel (solo para mostrar botones; la base valida con is_admin_of). */

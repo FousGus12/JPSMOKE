@@ -159,7 +159,8 @@ test.describe('tablero con mouse', () => {
       .getByRole('dialog', { name: 'Confirmar cambio' })
       .getByRole('button', { name: 'Sí, cambiar' })
       .click();
-    await expect.poll(() => statusOf(codeOf(ENTREGAR))).toBe('entregado');
+    // D60: la entrega sale a los 10 s (con "Deshacer" mientras tanto).
+    await expect.poll(() => statusOf(codeOf(ENTREGAR)), { timeout: 16_000 }).toBe('entregado');
 
     // Saltar de Nuevo a En camino (dos pasos o más).
     await dragWithMouse(page, codeOf(SALTAR), 'en_camino');

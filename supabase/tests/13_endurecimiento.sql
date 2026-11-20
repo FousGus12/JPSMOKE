@@ -12,7 +12,7 @@ select ok(not has_column_privilege('anon', 'public.restaurant_settings', 'whatsa
 select ok(not has_column_privilege('anon', 'public.restaurants', 'plan', 'select'), 'anon no ve el plan contratado');
 select ok(not has_table_privilege('authenticated', 'public.orders', 'truncate'), 'nadie del panel puede vaciar tablas');
 select is((select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-  where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute')), 2, 'anon solo ejecuta track_order y stock_status');
+  where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute')), 3, 'anon solo ejecuta track_order, stock_status y ordering_status (D61)');
 
 select * from finish();
 rollback;

@@ -1,24 +1,34 @@
 // Piezas compartidas del panel: avisos, ventana lateral, modal, sonido y notificación del navegador.
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 
-const ToastContext = createContext<(message: string) => void>(() => undefined);
+/** Aviso del panel. `toast: false` solo lo lee el lector de pantalla (sin aviso visible). */
+type Announce = (message: string, options?: { toast?: boolean }) => void;
+const ToastContext = createContext<Announce>(() => undefined);
+/** Avisos visibles; cada uno se anuncia una sola vez por la región única del panel. */
 export const useToast = () => useContext(ToastContext);
+/** Igual que useToast; el nombre aclara que también sirve para anuncios solo para lectores de pantalla. */
+export const useAnnounce = useToast;
 
+/**
+ * Avisos del panel con UNA sola región aria-live (la de los toasts): cada aviso es un nodo nuevo y se lee
+ * una vez, también dos seguidos o iguales. Los anuncios sin toast van ahí mismo, ocultos a la vista.
+ * Antes el tablero tenía otra región (.board-live) y cada cambio se oía dos veces.
+ */
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<Array<{ id: number; message: string }>>([]);
+  const [items, setItems] = useState<Array<{ id: number; message: string; toast: boolean }>>([]);
   const next = useRef(0);
-  const push = useCallback((message: string) => {
+  const push = useCallback<Announce>((message, options) => {
     next.current += 1;
     const id = next.current;
-    setItems((list) => [...list, { id, message }]);
+    setItems((list) => [...list, { id, message, toast: options?.toast !== false }]);
     setTimeout(() => setItems((list) => list.filter((item) => item.id !== id)), 3500);
   }, []);
   return (
     <ToastContext.Provider value={push}>
       {children}
-      <div className="toasts" aria-live="polite">
+      <div className="toasts" role="status" aria-live="polite" data-testid="panel-live">
         {items.map((item) => (
-          <div className="toast" key={item.id}>
+          <div className={item.toast ? 'toast' : 'sr-only'} key={item.id}>
             {item.message}
           </div>
         ))}

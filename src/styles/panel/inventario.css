@@ -146,3 +146,14 @@
     flex-wrap: wrap;
   }
 }
+
+/* Lista de compras (D66). El textarea de respaldo para copiar queda fuera de la vista. */
+.inv-shopping-total {
+  margin: 12px 0;
+}
+.inv-copy-fallback {
+  position: fixed;
+  top: 0;
+  left: -9999px;
+  opacity: 0;
+}

@@ -10,9 +10,13 @@ import {
   recipeCost,
   roundUpTo100,
   servingsLeft,
+  shoppingList,
+  shoppingText,
   suggestedPrice,
   suppliesWithoutCost,
   supplyLevel,
+  whatsappShareUrl,
+  type ShoppingSupply,
 } from './inventory';
 
 const supplies = [
@@ -98,5 +102,73 @@ describe('campos numéricos', () => {
     expect(parseInput('12.000,50')).toBe(12000.5);
     expect(parseInput('')).toBeNaN();
     expect(parseInput('abc')).toBeNaN();
+  });
+});
+
+describe('lista de compras (D66)', () => {
+  const base: ShoppingSupply = {
+    id: 'pan',
+    name: 'Pan',
+    cost: 12000,
+    costBasis: 'compra',
+    perPurchase: 12,
+    stock: 3,
+    minStock: 4,
+    initialStock: 36,
+    unit: 'pan',
+    purchaseUnit: 'paquete',
+    active: true,
+  };
+  const pesos = (value: number) => 'COP ' + String(value);
+  it('no incluye insumos sobre el mínimo ni inactivos', () => {
+    const list = shoppingList([
+      { ...base, stock: 5 },
+      { ...base, id: 'x', stock: 0, active: false },
+    ]);
+    expect(list.items).toEqual([]);
+    expect(list.total).toBe(0);
+  });
+  it('en el mínimo exacto sí entra', () => {
+    expect(shoppingList([{ ...base, stock: 4 }]).items).toHaveLength(1);
+  });
+  it('convierte a unidades de compra redondeando hacia arriba', () => {
+    // faltan 33 panes: 2,75 paquetes, se compran 3
+    const [item] = shoppingList([base]).items;
+    expect(item?.qty).toBe(3);
+    expect(item?.cost).toBe(36000);
+  });
+  it('una división exacta no sube un paquete de más', () => {
+    expect(shoppingList([{ ...base, stock: 0, initialStock: 24 }]).items[0]?.qty).toBe(2);
+  });
+  it('sin inicial usa 2x el mínimo', () => {
+    // 8 - 3 = 5 panes: 1 paquete
+    expect(shoppingList([{ ...base, initialStock: null }]).items[0]?.qty).toBe(1);
+  });
+  it('inicial que no supera lo que hay cae a 2x el mínimo', () => {
+    expect(shoppingList([{ ...base, initialStock: 2 }]).items[0]?.qty).toBe(1);
+  });
+  it('mínimo 0 y sin inicial no genera renglón', () => {
+    expect(shoppingList([{ ...base, stock: 0, minStock: 0, initialStock: null }]).items).toEqual([]);
+  });
+  it('costo por unidad de uso y sin costo', () => {
+    const list = shoppingList([
+      { ...base, cost: 1000, costBasis: 'uso' },
+      { ...base, id: 'b', name: 'Bacon', cost: null },
+    ]);
+    expect(list.items.find((item) => item.id === 'pan')?.cost).toBe(36000);
+    expect(list.items.find((item) => item.id === 'b')?.cost).toBeNull();
+    expect(list.total).toBe(36000);
+    expect(list.withoutCost).toBe(1);
+  });
+  it('texto y enlace de WhatsApp sin destinatario', () => {
+    const list = shoppingList([base, { ...base, id: 'b', name: 'Bacon', cost: null }]);
+    const text = shoppingText(list, '19 de noviembre de 2026', pesos);
+    expect(text).toContain('JP Smoke · lista de compras\n19 de noviembre de 2026');
+    expect(text).toContain('• Bacon: 3 paquete (sin costo)');
+    expect(text).toContain('Total estimado: COP 36000 (sin contar 1 sin costo)');
+    const prefix = 'https://wa.me/?text=';
+    const url = whatsappShareUrl(text);
+    expect(url.startsWith(prefix)).toBe(true);
+    expect(decodeURIComponent(url.slice(prefix.length))).toBe(text);
   });
 });

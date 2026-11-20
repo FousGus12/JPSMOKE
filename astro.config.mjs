@@ -9,6 +9,13 @@ const supabaseWs = supabaseUrl.replace(/^http/, 'ws');
 const supabaseHost = supabaseUrl ? new URL(supabaseUrl) : null;
 // Cloudflare Turnstile (D9): solo se permite su script y su iframe si hay clave configurada.
 const turnstile = env.PUBLIC_TURNSTILE_SITE_KEY ? 'https://challenges.cloudflare.com' : '';
+// D67: id de la compilación para el aviso de versión nueva (/version.json). En Vercel, el commit; en local, la hora.
+const buildId =
+  (process.env.VERCEL_GIT_COMMIT_SHA ?? env.VERCEL_GIT_COMMIT_SHA ?? '').slice(0, 12) ||
+  `local-${new Date()
+    .toISOString()
+    .replace(/[-:.TZ]/g, '')
+    .slice(0, 14)}`;
 
 // Sitio estático (D37): sin adaptador de servidor. La CSP de scripts y estilos la calcula Astro por hash
 // en cada página; frame-ancestors y el resto de encabezados van en vercel.json.
@@ -32,6 +39,7 @@ export default defineConfig({
     : {},
   vite: {
     plugins: [tailwindcss()],
+    define: { 'import.meta.env.PUBLIC_BUILD_ID': JSON.stringify(buildId) },
     build: { sourcemap: false, assetsInlineLimit: 0 },
   },
   security: {

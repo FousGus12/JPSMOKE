@@ -280,3 +280,9 @@
     animation: none !important;
   }
 }
+
+/* Motivo público de la anulación (D59): se lee como texto, no como pista. */
+.track-page .track-hero .track-cancel-note {
+  color: var(--text);
+  font-weight: 600;
+}

@@ -1,6 +1,12 @@
 // Crear pedido web (D9, D15, D21). Capas: CORS, tamaño, Zod, campo trampa, tiempo mínimo, Turnstile,
 // límite por IP y, en la base, límite por celular, bloqueos, zona, horario y precios recalculados.
-import { mensajesPedido, pedidoSchema, CONSENT_VERSION, type PedidoError } from '../_shared/pedido.ts';
+import {
+  mensajePausa,
+  mensajesPedido,
+  pedidoSchema,
+  CONSENT_VERSION,
+  type PedidoError,
+} from '../_shared/pedido.ts';
 import { hashIp, json, newTrackToken, prelude, type Rpc, type VerifyTurnstile } from '../_shared/publico.ts';
 
 export interface Deps {
@@ -67,8 +73,23 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     code?: string;
     total?: number;
     product?: string;
+    resumes_at?: string;
+    repeated?: boolean;
   };
   if (!result.ok) {
+    // D61: pausa del equipo = cerrado con la hora en que vuelve.
+    if (result.reason === 'cerrado' && result.resumes_at) {
+      return json(
+        {
+          ok: false,
+          error: 'cerrado',
+          message: mensajePausa(result.resumes_at),
+          resumes_at: result.resumes_at,
+        },
+        422,
+        cors,
+      );
+    }
     if (result.reason === 'agotado' && result.product) {
       return json(
         {
@@ -82,5 +103,6 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     }
     return fail(result.reason && result.reason in mensajesPedido ? result.reason : 'error');
   }
+  // D58: un reintento (repeated) responde igual que un pedido nuevo: mismo código y el enlace con el token nuevo.
   return json({ ok: true, code: result.code, token, total: result.total }, 201, cors);
 }

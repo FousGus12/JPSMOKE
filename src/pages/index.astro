@@ -10,6 +10,7 @@ import { loadSiteData } from '../lib/content';
 import { formatCop } from '../core/money';
 import { restaurantJsonLd } from '../core/jsonld';
 import { asLocalities, mapGeometry, zoneForLocality } from '../core/coverage';
+import { heroNote } from '../core/site-copy';
 import bogota from '../data/bogota-localidades.json';
 
 const site = await loadSiteData();
@@ -45,6 +46,10 @@ const storePin =
     : null;
 const byName = [...localities].sort((a, b) => a.name.localeCompare(b.name, 'es'));
 const jsonLd = [restaurantJsonLd(site, siteUrl)];
+// D56: textos editables (texto plano; Astro los escapa). Títulos en renglones.
+const copy = site.copy;
+const head = copy.titles;
+const lead = intro?.leadCopy;
 ---
 
 <Site
@@ -106,11 +111,16 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
           </button>
           {intro.capturesLeads ? (
             <div id="pop-body">
-              <p class="eyebrow">Cupón de bienvenida</p>
+              <p class="eyebrow">{lead?.kicker}</p>
               <h2 class="display popup-title" id="pop-title">
-                Tu primera mordida va con descuento
+                {lead?.title.map((line, i) => (
+                  <>
+                    {i > 0 && <br />}
+                    {line}
+                  </>
+                ))}
               </h2>
-              <p class="popup-text">Déjanos tu nombre y celular y te damos un cupón para tu pedido.</p>
+              <p class="popup-text">{lead?.text}</p>
               <form id="pop-form" novalidate>
                 <div class="field">
                   <label for="p-name">Nombre</label>
@@ -141,7 +151,7 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
                 </label>
                 <p class="form-error" id="pop-error" hidden />
                 <button class="btn btn-primary btn-lg btn-block" type="submit">
-                  Quiero mi cupón
+                  {lead?.button}
                 </button>
               </form>
             </div>
@@ -181,17 +191,21 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
         <p class="hero-sub">{site.hero.text}</p>
         <div class="hero-actions">
           <a class="btn btn-primary btn-lg" href="#carta">
-            Pedir ahora
+            {copy.cta.primary}
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
               <path d="M5 12h14M13 6l6 6-6 6"></path>
             </svg>
           </a>
           {wa && (
             <a class="btn btn-ghost btn-lg" href={wa} target="_blank" rel="noopener">
-              Pedir por WhatsApp
+              {copy.cta.whatsapp}
             </a>
           )}
         </div>
+        {/* D63: lo muestra sitio.ts si este celular guardó un pedido anterior. */}
+        <button class="btn btn-soft btn-sm hero-repeat" type="button" data-repeat-order hidden>
+          ↻ Repetir mi último pedido
+        </button>
         {(site.channels.rappi.visible || site.channels.didi.visible) && (
           <div class="hero-channels">
             <span class="hero-channels-label">¿Prefieres app?</span>
@@ -208,7 +222,7 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
           </div>
         )}
         <p class="hero-note">
-          <span class="dot"></span> Solo domicilio · punto físico muy pronto
+          <span class="dot"></span> {heroNote(copy, site.store.open)}
         </p>
       </div>
       <div class="hero-cards" id="hero-cards">
@@ -240,6 +254,7 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
           stripEvents.map((event) => (
             <a
               href={event.ctaHref}
+              data-ends={event.endsOn}
               aria-hidden={round > 0 ? 'true' : undefined}
               tabindex={round > 0 ? -1 : undefined}
             >
@@ -255,15 +270,22 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
     <section class="section" id="arsenal">
       <div class="wrap">
         <div class="section-head reveal">
-          <p class="eyebrow">El arsenal pesado</p>
+          <p class="eyebrow">{head.arsenal.kicker}</p>
           <h2 class="display h-xl">
-            Directo
-            <br />
-            del barril
+            {head.arsenal.title.map((line, i) => (
+              <>
+                {i > 0 && <br />}
+                {line}
+              </>
+            ))}
           </h2>
-          <p class="lead">
-            Los que más salen. ¿Quieres verlo todo? <a href="#carta">Ve a la carta completa</a>.
-          </p>
+          {head.arsenal.text === null ? (
+            <p class="lead">
+              Los que más salen. ¿Quieres verlo todo? <a href="#carta">Ve a la carta completa</a>.
+            </p>
+          ) : (
+            head.arsenal.text && <p class="lead">{head.arsenal.text}</p>
+          )}
         </div>
         <div class="carousel reveal">
           <div class="carousel-track" id="arsenal-track" tabindex="0" aria-label="Productos destacados">
@@ -288,16 +310,23 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
     <section class="section section-alt" id="carta">
       <div class="wrap">
         <div class="section-head reveal">
-          <p class="eyebrow">La carta completa</p>
+          <p class="eyebrow">{head.carta.kicker}</p>
           <h2 class="display h-xl">
-            Conócelos
-            <br />
-            todos
+            {head.carta.title.map((line, i) => (
+              <>
+                {i > 0 && <br />}
+                {line}
+              </>
+            ))}
           </h2>
-          <p class="lead">
-            {dishes} platos y {extrasCount} adicionales salidos del barril. Precios en pesos, impoconsumo
-            incluido.
-          </p>
+          {head.carta.text === null ? (
+            <p class="lead">
+              {dishes} platos y {extrasCount} adicionales salidos del barril. Precios en pesos, impoconsumo
+              incluido.
+            </p>
+          ) : (
+            head.carta.text && <p class="lead">{head.carta.text}</p>
+          )}
         </div>
       </div>
       <div class="carta-bar">
@@ -386,7 +415,18 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
           </div>
         )}
         <div class="coupons reveal">
-          <p class="eyebrow">Cupones activos</p>
+          <p class="eyebrow">{head.promos.kicker}</p>
+          {head.promos.title.length > 0 && (
+            <h2 class="display h-md coupons-title">
+              {head.promos.title.map((line, i) => (
+                <>
+                  {i > 0 && <br />}
+                  {line}
+                </>
+              ))}
+            </h2>
+          )}
+          {head.promos.text && <p class="muted coupons-text">{head.promos.text}</p>}
           <div class="coupon-list">
             {visibleCoupons.length === 0 && <p class="muted">Sin cupones por ahora.</p>}
             {visibleCoupons.map((coupon) => (
@@ -415,16 +455,20 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
     <section class="section section-alt" id="eventos">
       <div class="wrap">
         <div class="section-head reveal">
-          <p class="eyebrow">Eventos y novedades</p>
+          <p class="eyebrow">{head.eventos.kicker}</p>
           <h2 class="display h-xl">
-            Lo que se
-            <br />
-            está cocinando
+            {head.eventos.title.map((line, i) => (
+              <>
+                {i > 0 && <br />}
+                {line}
+              </>
+            ))}
           </h2>
+          {head.eventos.text && <p class="lead">{head.eventos.text}</p>}
         </div>
         <div class="events">
           {sectionEvents.map((event) => (
-            <article class="event">
+            <article class="event" data-ends={event.endsOn}>
               <Photo src={event.image} preset={eventPreset(sectionEvents.length)} />
               <div class="event-in">
                 <span class="tag tag-gold">{event.kicker}</span>
@@ -475,12 +519,16 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
     <section class="section section-alt" id="resenas">
       <div class="wrap">
         <div class="section-head reveal">
-          <p class="eyebrow">Prueba social</p>
+          <p class="eyebrow">{head.resenas.kicker}</p>
           <h2 class="display h-xl">
-            El rugido
-            <br />
-            de la manada
+            {head.resenas.title.map((line, i) => (
+              <>
+                {i > 0 && <br />}
+                {line}
+              </>
+            ))}
           </h2>
+          {head.resenas.text && <p class="lead">{head.resenas.text}</p>}
         </div>
         <div class="reviews">
           {site.reviews.map((review) => (
@@ -492,6 +540,7 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
               <footer>
                 <span class="avatar">{review.author[0]}</span>
                 {review.author}
+                <small class="review-source">· {review.source}</small>
               </footer>
             </article>
           ))}
@@ -504,17 +553,22 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
     <section class="section" id="cobertura">
       <div class="wrap cover">
         <div class="reveal">
-          <p class="eyebrow">Domicilios</p>
+          <p class="eyebrow">{head.cobertura.kicker}</p>
           <h2 class="display h-xl">
-            ¿Llegamos
-            <br />a tu barrio?
+            {head.cobertura.title.map((line, i) => (
+              <>
+                {i > 0 && <br />}
+                {line}
+              </>
+            ))}
           </h2>
           <p class="lead">
-            {site.store.open
-              ? site.store.pickup
-                ? 'Te lo llevamos o lo recoges en el local, sin costo de domicilio.'
-                : 'Te lo llevamos a domicilio o nos visitas en el local.'
-              : 'Por ahora somos solo domicilio. El punto físico viene en camino.'}
+            {head.cobertura.text ??
+              (site.store.open
+                ? site.store.pickup
+                  ? 'Te lo llevamos o lo recoges en el local, sin costo de domicilio.'
+                  : 'Te lo llevamos a domicilio o nos visitas en el local.'
+                : 'Por ahora somos solo domicilio. El punto físico viene en camino.')}
           </p>
           <p class="cover-meta">
             <strong>{site.deliveryEta}</strong> de entrega promedio · pedido mínimo{' '}
@@ -618,14 +672,19 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
   <section class="final">
     <div class="final-smoke" aria-hidden="true"></div>
     <div class="wrap final-in reveal">
+      {copy.final.kicker && <p class="eyebrow">{copy.final.kicker}</p>}
       <h2 class="display h-xxl">
-        El barril
-        <br />
-        está encendido
+        {copy.final.title.map((line, i) => (
+          <>
+            {i > 0 && <br />}
+            {line}
+          </>
+        ))}
       </h2>
+      {copy.final.text && <p class="lead final-text">{copy.final.text}</p>}
       <div class="hero-actions">
         <a class="btn btn-primary btn-lg" href="#carta">
-          Pedir ahora
+          {copy.final.button}
         </a>
         {wa && (
           <a class="btn btn-ghost btn-lg" href={wa} target="_blank" rel="noopener">

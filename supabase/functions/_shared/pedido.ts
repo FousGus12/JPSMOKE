@@ -64,6 +64,10 @@ export const pedidoSchema = z
     acepta_datos: z.literal(true, 'Necesitamos tu autorización para entregar el pedido'),
     promos: z.boolean().default(false),
     elapsed_ms: z.number().int().min(0).max(86_400_000),
+    // D58: id del intento (uuid por envío): un reintento devuelve el mismo pedido. D63: tiempos del formulario.
+    request_id: z.uuid().optional(),
+    fill_ms: z.number().int().min(0).max(86_400_000).optional(),
+    checkout_ms: z.number().int().min(0).max(86_400_000).optional(),
     turnstile: z.string().max(4096).default(''),
     sitio_web: trampa,
   })
@@ -82,7 +86,7 @@ export const pedidoSchema = z
   });
 export type Pedido = z.infer<typeof pedidoSchema>;
 
-export { mensajesPedido, type PedidoError } from './mensajes.ts';
+export { mensajePausa, mensajesPedido, type PedidoError } from './mensajes.ts';
 
 export const seguimientoSchema = z.union([
   z.object({

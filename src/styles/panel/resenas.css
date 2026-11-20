@@ -1,0 +1,116 @@
+/* JP Smoke · panel · reseñas y pausa de pedidos (v0.19). Solo clases: la CSP prohíbe atributos style. */
+
+.reviews {
+  display: grid;
+  gap: 12px;
+}
+.reviews-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.review {
+  display: grid;
+  gap: 8px;
+}
+.review.is-hidden {
+  opacity: 0.75;
+}
+.review-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.review-stars {
+  letter-spacing: 2px;
+}
+.review-body,
+.review-meta {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.review-actions {
+  flex-wrap: wrap;
+}
+.review-stars-pick {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.review-stars-pick button[aria-pressed='true'] {
+  border-color: currentColor;
+  font-weight: 700;
+}
+.reviews-empty {
+  padding: 24px 0;
+}
+
+/* Pausar pedidos (barra superior) */
+.pause {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.pause-state {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pause-short {
+  display: none;
+}
+.pause-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  display: grid;
+  gap: 6px;
+  min-width: 168px;
+  padding: 8px;
+  border: 1px solid var(--line, currentColor);
+  border-radius: var(--radius, 8px);
+  background: var(--surface, #fff);
+}
+/* En celular panel.css oculta los .btn-soft de la barra: pausar debe seguir a la mano (D61). */
+@media (max-width: 860px) {
+  .topbar-actions .pause .btn-soft {
+    display: inline-flex;
+  }
+  /* Solo el ícono (el nombre accesible sigue siendo "Pausar pedidos"): la barra no debe desbordar a 360 px. */
+  .pause-long {
+    display: none;
+  }
+  .pause-short {
+    display: inline;
+  }
+  /* En pausa la barra baja a dos renglones: el estado y Reanudar quedan visibles sin aplastar el título. */
+  .topbar:has(.pause-state) {
+    flex-wrap: wrap;
+  }
+  .topbar-actions:has(.pause-state) {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 6px;
+  }
+  .pause-state {
+    font-size: 0.85rem;
+  }
+}
+@media (max-width: 480px) {
+  .topbar h1 {
+    font-size: 17px;
+  }
+}
+@media (max-width: 720px) {
+  .pause {
+    flex-wrap: wrap;
+  }
+  .pause-menu {
+    right: auto;
+    left: 0;
+  }
+}

@@ -41,3 +41,9 @@ export function recentOrders(list: RememberedOrder[], now: number): RememberedOr
 export function stepIndex(status: OrderStatus): number {
   return ORDER_STEPS.findIndex(([key]) => key === status);
 }
+
+/** Texto del pedido cancelado: el motivo público que escribió el equipo (D59) o el genérico. */
+export function cancelText(note: string | null | undefined): string {
+  const clean = typeof note === 'string' ? note.replace(/\s+/g, ' ').trim() : '';
+  return clean || 'Tu pedido fue cancelado. Si tienes dudas, escríbenos por WhatsApp.';
+}

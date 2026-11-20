@@ -45,17 +45,23 @@ isOneToOne: false
                   ]
                 },"blocked_attempts": {
                   Row: {
-                    "at": string,"customer_name": string | null,"id": number,"items_count": number | null,"phone_last4": string | null,"reason": string,"restaurant_id": string,"total_attempt": number | null,"zone_name": string | null
+                    "at": string,"customer_id": string | null,"customer_name": string | null,"id": number,"items_count": number | null,"phone_last4": string | null,"reason": string,"restaurant_id": string,"total_attempt": number | null,"zone_name": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "at"?: string,"customer_name"?: string | null,"id"?: never,"items_count"?: number | null,"phone_last4"?: string | null,"reason": string,"restaurant_id": string,"total_attempt"?: number | null,"zone_name"?: string | null
+                    "at"?: string,"customer_id"?: string | null,"customer_name"?: string | null,"id"?: never,"items_count"?: number | null,"phone_last4"?: string | null,"reason": string,"restaurant_id": string,"total_attempt"?: number | null,"zone_name"?: string | null
                   }
                   Update: {
-                    "at"?: string,"customer_name"?: string | null,"id"?: never,"items_count"?: number | null,"phone_last4"?: string | null,"reason"?: string,"restaurant_id"?: string,"total_attempt"?: number | null,"zone_name"?: string | null
+                    "at"?: string,"customer_id"?: string | null,"customer_name"?: string | null,"id"?: never,"items_count"?: number | null,"phone_last4"?: string | null,"reason"?: string,"restaurant_id"?: string,"total_attempt"?: number | null,"zone_name"?: string | null
                   }
                   Relationships: [
                     {
+      foreignKeyName: "blocked_attempts_customer_id_fkey"
+      columns: ["customer_id"]
+isOneToOne: false
+      referencedRelation: "customers"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "blocked_attempts_restaurant_id_fkey"
       columns: ["restaurant_id"]
 isOneToOne: false
@@ -185,14 +191,14 @@ isOneToOne: false
                   ]
                 },"events": {
                   Row: {
-                    "active": boolean,"body": string,"captures_leads": boolean,"coupon_id": string | null,"cta_href": string,"cta_label": string,"ends_on": string,"id": string,"image_path": string | null,"kicker": string,"position": number,"restaurant_id": string,"show_intro": boolean,"show_section": boolean,"show_strip": boolean,"starts_on": string,"title": string
+                    "active": boolean,"body": string,"captures_leads": boolean,"coupon_id": string | null,"cta_href": string,"cta_label": string,"ends_on": string,"id": string,"image_path": string | null,"kicker": string,"lead_copy": Json | null,"position": number,"restaurant_id": string,"show_intro": boolean,"show_section": boolean,"show_strip": boolean,"starts_on": string,"title": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "active"?: boolean,"body"?: string,"captures_leads"?: boolean,"coupon_id"?: string | null,"cta_href"?: string,"cta_label"?: string,"ends_on": string,"id"?: string,"image_path"?: string | null,"kicker"?: string,"position"?: number,"restaurant_id": string,"show_intro"?: boolean,"show_section"?: boolean,"show_strip"?: boolean,"starts_on"?: string,"title": string
+                    "active"?: boolean,"body"?: string,"captures_leads"?: boolean,"coupon_id"?: string | null,"cta_href"?: string,"cta_label"?: string,"ends_on": string,"id"?: string,"image_path"?: string | null,"kicker"?: string,"lead_copy"?: Json | null,"position"?: number,"restaurant_id": string,"show_intro"?: boolean,"show_section"?: boolean,"show_strip"?: boolean,"starts_on"?: string,"title": string
                   }
                   Update: {
-                    "active"?: boolean,"body"?: string,"captures_leads"?: boolean,"coupon_id"?: string | null,"cta_href"?: string,"cta_label"?: string,"ends_on"?: string,"id"?: string,"image_path"?: string | null,"kicker"?: string,"position"?: number,"restaurant_id"?: string,"show_intro"?: boolean,"show_section"?: boolean,"show_strip"?: boolean,"starts_on"?: string,"title"?: string
+                    "active"?: boolean,"body"?: string,"captures_leads"?: boolean,"coupon_id"?: string | null,"cta_href"?: string,"cta_label"?: string,"ends_on"?: string,"id"?: string,"image_path"?: string | null,"kicker"?: string,"lead_copy"?: Json | null,"position"?: number,"restaurant_id"?: string,"show_intro"?: boolean,"show_section"?: boolean,"show_strip"?: boolean,"starts_on"?: string,"title"?: string
                   }
                   Relationships: [
                     {
@@ -203,6 +209,58 @@ isOneToOne: false
       referencedColumns: ["id"]
     },{
       foreignKeyName: "events_restaurant_id_fkey"
+      columns: ["restaurant_id"]
+isOneToOne: false
+      referencedRelation: "restaurants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"external_sales": {
+                  Row: {
+                    "batch_id": string,"channel": Database["public"]['Enums']["order_channel"],"commission": number | null,"created_at": string,"external_id": string,"id": string,"items": string,"matched_order_id": string | null,"restaurant_id": string,"sold_at": string,"sold_on": string,"total": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "batch_id": string,"channel": Database["public"]['Enums']["order_channel"],"commission"?: number | null,"created_at"?: string,"external_id": string,"id"?: string,"items"?: string,"matched_order_id"?: string | null,"restaurant_id": string,"sold_at": string,"sold_on": string,"total": number
+                  }
+                  Update: {
+                    "batch_id"?: string,"channel"?: Database["public"]['Enums']["order_channel"],"commission"?: number | null,"created_at"?: string,"external_id"?: string,"id"?: string,"items"?: string,"matched_order_id"?: string | null,"restaurant_id"?: string,"sold_at"?: string,"sold_on"?: string,"total"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "external_sales_batch_id_fkey"
+      columns: ["batch_id"]
+isOneToOne: false
+      referencedRelation: "import_batches"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "external_sales_matched_order_id_fkey"
+      columns: ["matched_order_id"]
+isOneToOne: false
+      referencedRelation: "orders"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "external_sales_restaurant_id_fkey"
+      columns: ["restaurant_id"]
+isOneToOne: false
+      referencedRelation: "restaurants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"import_batches": {
+                  Row: {
+                    "channel": Database["public"]['Enums']["order_channel"],"created_at": string,"created_by": string | null,"errors": number,"file_name": string,"id": string,"inserted": number,"matched": number,"repeated": number,"restaurant_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "channel": Database["public"]['Enums']["order_channel"],"created_at"?: string,"created_by"?: string | null,"errors"?: number,"file_name"?: string,"id"?: string,"inserted"?: number,"matched"?: number,"repeated"?: number,"restaurant_id": string
+                  }
+                  Update: {
+                    "channel"?: Database["public"]['Enums']["order_channel"],"created_at"?: string,"created_by"?: string | null,"errors"?: number,"file_name"?: string,"id"?: string,"inserted"?: number,"matched"?: number,"repeated"?: number,"restaurant_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "import_batches_restaurant_id_fkey"
       columns: ["restaurant_id"]
 isOneToOne: false
       referencedRelation: "restaurants"
@@ -307,14 +365,14 @@ isOneToOne: false
                   ]
                 },"orders": {
                   Row: {
-                    "address": string,"barrio": string,"cancel_reason": string | null,"cash_with": number | null,"channel": Database["public"]['Enums']["order_channel"],"code": string,"coupon_code": string | null,"created_at": string,"customer_id": string | null,"customer_name": string,"delivery_fee": number,"discount": number,"fulfillment": string,"gift": string | null,"id": string,"is_test": boolean,"notes": string,"number": number,"payment_label": string,"phone": string,"restaurant_id": string,"status": Database["public"]['Enums']["order_status"],"subtotal": number,"total": number,"track_hash": string,"updated_at": string,"voided_from": Database["public"]['Enums']["order_status"] | null,"zone_name": string
+                    "address": string,"barrio": string,"cancel_public": string | null,"cancel_reason": string | null,"cash_with": number | null,"channel": Database["public"]['Enums']["order_channel"],"checkout_ms": number | null,"code": string,"coupon_code": string | null,"created_at": string,"customer_id": string | null,"customer_name": string,"delivery_fee": number,"discount": number,"fill_ms": number | null,"fulfillment": string,"gift": string | null,"id": string,"is_test": boolean,"notes": string,"number": number,"payment_label": string,"phone": string,"request_id": string | null,"restaurant_id": string,"status": Database["public"]['Enums']["order_status"],"subtotal": number,"supplies_restored": boolean | null,"total": number,"track_hash": string,"updated_at": string,"voided_from": Database["public"]['Enums']["order_status"] | null,"zone_name": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "address": string,"barrio"?: string,"cancel_reason"?: string | null,"cash_with"?: number | null,"channel"?: Database["public"]['Enums']["order_channel"],"code": string,"coupon_code"?: string | null,"created_at"?: string,"customer_id"?: string | null,"customer_name": string,"delivery_fee"?: number,"discount"?: number,"fulfillment"?: string,"gift"?: string | null,"id"?: string,"is_test"?: boolean,"notes"?: string,"number": number,"payment_label": string,"phone": string,"restaurant_id": string,"status"?: Database["public"]['Enums']["order_status"],"subtotal": number,"total": number,"track_hash": string,"updated_at"?: string,"voided_from"?: Database["public"]['Enums']["order_status"] | null,"zone_name": string
+                    "address": string,"barrio"?: string,"cancel_public"?: string | null,"cancel_reason"?: string | null,"cash_with"?: number | null,"channel"?: Database["public"]['Enums']["order_channel"],"checkout_ms"?: number | null,"code": string,"coupon_code"?: string | null,"created_at"?: string,"customer_id"?: string | null,"customer_name": string,"delivery_fee"?: number,"discount"?: number,"fill_ms"?: number | null,"fulfillment"?: string,"gift"?: string | null,"id"?: string,"is_test"?: boolean,"notes"?: string,"number": number,"payment_label": string,"phone": string,"request_id"?: string | null,"restaurant_id": string,"status"?: Database["public"]['Enums']["order_status"],"subtotal": number,"supplies_restored"?: boolean | null,"total": number,"track_hash": string,"updated_at"?: string,"voided_from"?: Database["public"]['Enums']["order_status"] | null,"zone_name": string
                   }
                   Update: {
-                    "address"?: string,"barrio"?: string,"cancel_reason"?: string | null,"cash_with"?: number | null,"channel"?: Database["public"]['Enums']["order_channel"],"code"?: string,"coupon_code"?: string | null,"created_at"?: string,"customer_id"?: string | null,"customer_name"?: string,"delivery_fee"?: number,"discount"?: number,"fulfillment"?: string,"gift"?: string | null,"id"?: string,"is_test"?: boolean,"notes"?: string,"number"?: number,"payment_label"?: string,"phone"?: string,"restaurant_id"?: string,"status"?: Database["public"]['Enums']["order_status"],"subtotal"?: number,"total"?: number,"track_hash"?: string,"updated_at"?: string,"voided_from"?: Database["public"]['Enums']["order_status"] | null,"zone_name"?: string
+                    "address"?: string,"barrio"?: string,"cancel_public"?: string | null,"cancel_reason"?: string | null,"cash_with"?: number | null,"channel"?: Database["public"]['Enums']["order_channel"],"checkout_ms"?: number | null,"code"?: string,"coupon_code"?: string | null,"created_at"?: string,"customer_id"?: string | null,"customer_name"?: string,"delivery_fee"?: number,"discount"?: number,"fill_ms"?: number | null,"fulfillment"?: string,"gift"?: string | null,"id"?: string,"is_test"?: boolean,"notes"?: string,"number"?: number,"payment_label"?: string,"phone"?: string,"request_id"?: string | null,"restaurant_id"?: string,"status"?: Database["public"]['Enums']["order_status"],"subtotal"?: number,"supplies_restored"?: boolean | null,"total"?: number,"track_hash"?: string,"updated_at"?: string,"voided_from"?: Database["public"]['Enums']["order_status"] | null,"zone_name"?: string
                   }
                   Relationships: [
                     {
@@ -431,14 +489,14 @@ isOneToOne: false
                   ]
                 },"restaurant_settings": {
                   Row: {
-                    "accepting_orders": boolean,"blocks": NonNullable<Json>,"brand": NonNullable<Json>,"channels": NonNullable<Json>,"delivery_eta": string,"delivery_min": number,"hero": NonNullable<Json>,"hours": NonNullable<Json>,"instagram": string | null,"intro_mode": Database["public"]['Enums']["intro_mode"],"pickup_enabled": boolean,"protection": Database["public"]['Enums']["protection_level"],"published_at": string | null,"restaurant_id": string,"sections": NonNullable<Json>,"site_url": string | null,"store_address": string | null,"store_hours": NonNullable<Json>,"store_lat": number | null,"store_lng": number | null,"store_maps_url": string | null,"store_open": boolean,"target_margin": number,"tiktok": string | null,"updated_at": string,"whatsapp": string | null,"whatsapp_mode": string
+                    "accepting_orders": boolean,"blocks": NonNullable<Json>,"brand": NonNullable<Json>,"channels": NonNullable<Json>,"delivery_eta": string,"delivery_min": number,"eta_dynamic": boolean,"eta_max_extra_min": number,"eta_per_order_min": number,"hero": NonNullable<Json>,"hours": NonNullable<Json>,"import_maps": NonNullable<Json>,"instagram": string | null,"intro_mode": Database["public"]['Enums']["intro_mode"],"orders_paused_until": string | null,"pickup_enabled": boolean,"protection": Database["public"]['Enums']["protection_level"],"published_at": string | null,"restaurant_id": string,"sections": NonNullable<Json>,"site_url": string | null,"store_address": string | null,"store_hours": NonNullable<Json>,"store_lat": number | null,"store_lng": number | null,"store_maps_url": string | null,"store_open": boolean,"target_margin": number,"tiktok": string | null,"updated_at": string,"whatsapp": string | null,"whatsapp_mode": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "accepting_orders"?: boolean,"blocks"?: NonNullable<Json>,"brand"?: NonNullable<Json>,"channels"?: NonNullable<Json>,"delivery_eta"?: string,"delivery_min"?: number,"hero"?: NonNullable<Json>,"hours"?: NonNullable<Json>,"instagram"?: string | null,"intro_mode"?: Database["public"]['Enums']["intro_mode"],"pickup_enabled"?: boolean,"protection"?: Database["public"]['Enums']["protection_level"],"published_at"?: string | null,"restaurant_id": string,"sections"?: NonNullable<Json>,"site_url"?: string | null,"store_address"?: string | null,"store_hours"?: NonNullable<Json>,"store_lat"?: number | null,"store_lng"?: number | null,"store_maps_url"?: string | null,"store_open"?: boolean,"target_margin"?: number,"tiktok"?: string | null,"updated_at"?: string,"whatsapp"?: string | null,"whatsapp_mode"?: string
+                    "accepting_orders"?: boolean,"blocks"?: NonNullable<Json>,"brand"?: NonNullable<Json>,"channels"?: NonNullable<Json>,"delivery_eta"?: string,"delivery_min"?: number,"eta_dynamic"?: boolean,"eta_max_extra_min"?: number,"eta_per_order_min"?: number,"hero"?: NonNullable<Json>,"hours"?: NonNullable<Json>,"import_maps"?: NonNullable<Json>,"instagram"?: string | null,"intro_mode"?: Database["public"]['Enums']["intro_mode"],"orders_paused_until"?: string | null,"pickup_enabled"?: boolean,"protection"?: Database["public"]['Enums']["protection_level"],"published_at"?: string | null,"restaurant_id": string,"sections"?: NonNullable<Json>,"site_url"?: string | null,"store_address"?: string | null,"store_hours"?: NonNullable<Json>,"store_lat"?: number | null,"store_lng"?: number | null,"store_maps_url"?: string | null,"store_open"?: boolean,"target_margin"?: number,"tiktok"?: string | null,"updated_at"?: string,"whatsapp"?: string | null,"whatsapp_mode"?: string
                   }
                   Update: {
-                    "accepting_orders"?: boolean,"blocks"?: NonNullable<Json>,"brand"?: NonNullable<Json>,"channels"?: NonNullable<Json>,"delivery_eta"?: string,"delivery_min"?: number,"hero"?: NonNullable<Json>,"hours"?: NonNullable<Json>,"instagram"?: string | null,"intro_mode"?: Database["public"]['Enums']["intro_mode"],"pickup_enabled"?: boolean,"protection"?: Database["public"]['Enums']["protection_level"],"published_at"?: string | null,"restaurant_id"?: string,"sections"?: NonNullable<Json>,"site_url"?: string | null,"store_address"?: string | null,"store_hours"?: NonNullable<Json>,"store_lat"?: number | null,"store_lng"?: number | null,"store_maps_url"?: string | null,"store_open"?: boolean,"target_margin"?: number,"tiktok"?: string | null,"updated_at"?: string,"whatsapp"?: string | null,"whatsapp_mode"?: string
+                    "accepting_orders"?: boolean,"blocks"?: NonNullable<Json>,"brand"?: NonNullable<Json>,"channels"?: NonNullable<Json>,"delivery_eta"?: string,"delivery_min"?: number,"eta_dynamic"?: boolean,"eta_max_extra_min"?: number,"eta_per_order_min"?: number,"hero"?: NonNullable<Json>,"hours"?: NonNullable<Json>,"import_maps"?: NonNullable<Json>,"instagram"?: string | null,"intro_mode"?: Database["public"]['Enums']["intro_mode"],"orders_paused_until"?: string | null,"pickup_enabled"?: boolean,"protection"?: Database["public"]['Enums']["protection_level"],"published_at"?: string | null,"restaurant_id"?: string,"sections"?: NonNullable<Json>,"site_url"?: string | null,"store_address"?: string | null,"store_hours"?: NonNullable<Json>,"store_lat"?: number | null,"store_lng"?: number | null,"store_maps_url"?: string | null,"store_open"?: boolean,"target_margin"?: number,"tiktok"?: string | null,"updated_at"?: string,"whatsapp"?: string | null,"whatsapp_mode"?: string
                   }
                   Relationships: [
                     {
@@ -465,14 +523,14 @@ isOneToOne: true
                   ]
                 },"reviews": {
                   Row: {
-                    "approved": boolean,"author": string,"body": string,"created_at": string,"id": string,"restaurant_id": string,"stars": number
+                    "approved": boolean,"author": string,"body": string,"created_at": string,"id": string,"position": number,"restaurant_id": string,"review_date": string,"source": string,"stars": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "approved"?: boolean,"author": string,"body": string,"created_at"?: string,"id"?: string,"restaurant_id": string,"stars": number
+                    "approved"?: boolean,"author": string,"body": string,"created_at"?: string,"id"?: string,"position"?: number,"restaurant_id": string,"review_date"?: string,"source"?: string,"stars": number
                   }
                   Update: {
-                    "approved"?: boolean,"author"?: string,"body"?: string,"created_at"?: string,"id"?: string,"restaurant_id"?: string,"stars"?: number
+                    "approved"?: boolean,"author"?: string,"body"?: string,"created_at"?: string,"id"?: string,"position"?: number,"restaurant_id"?: string,"review_date"?: string,"source"?: string,"stars"?: number
                   }
                   Relationships: [
                     {
@@ -620,6 +678,17 @@ isOneToOne: false
 "customers_list":
 { Args: { "p_limit"?: number,"p_offset"?: number,"p_search"?: string }; Returns: Json
                            },
+"customers_promo_export":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "autorizado_el": string,"celular": string,"nombre": string,"pedidos": number,"ultimo_pedido": string
+            }[]
+                           },
+"external_sales_summary":
+{ Args: { "p_days"?: number }; Returns: Json
+                           },
+"import_external_sales":
+{ Args: { "p_channel": string,"p_file": string,"p_rows": Json }; Returns: Json
+                           },
 "is_admin_of":
 { Args: { "rid": string }; Returns: boolean
                            },
@@ -634,6 +703,12 @@ isOneToOne: false
                            },
 "my_staff":
 { Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"ordering_status":
+{ Args: { "p_restaurant": string }; Returns: Json
+                           },
+"pause_orders":
+{ Args: { "p_minutes": number }; Returns: Json
                            },
 "place_order":
 { Args: { "p": Json }; Returns: Json
@@ -653,6 +728,9 @@ isOneToOne: false
 "register_supply":
 { Args: { "p_cost"?: number,"p_kind": Database["public"]['Enums']["supply_move_kind"],"p_note"?: string,"p_qty": number,"p_supply": string }; Returns: number
                            },
+"revert_import":
+{ Args: { "p_batch": string }; Returns: number
+                           },
 "revoke_sessions":
 { Args: { "p_user": string }; Returns: undefined
                            },
@@ -668,7 +746,7 @@ isOneToOne: false
 { Args: { "p_event": string }; Returns: undefined
                            },
 "set_order_status":
-{ Args: { "p_order": string,"p_reason"?: string,"p_status": Database["public"]['Enums']["order_status"] }; Returns: undefined
+{ Args: { "p_order": string,"p_public_reason"?: string,"p_reason"?: string,"p_restore"?: boolean,"p_status": Database["public"]['Enums']["order_status"] }; Returns: undefined
                            },
 "stock_status":
 { Args: { "p_restaurant": string }; Returns: Json
@@ -702,7 +780,7 @@ isOneToOne: false
                            }
           }
           Enums: {
-            "consent_kind": "datos_pedido"|"promociones"|"cupon_bienvenida"|"cotizacion","coupon_kind": "porcentaje"|"valor"|"envio"|"regalo","intro_mode": "completa"|"aviso"|"ninguna","order_channel": "web"|"whatsapp"|"manual"|"rappi"|"didi","order_status": "nuevo"|"confirmado"|"en_cocina"|"en_camino"|"entregado"|"cancelado","protection_level": "basica"|"recomendada"|"estricta","quote_status": "nueva"|"contactada"|"cerrada","staff_role": "admin"|"operador","supply_move_kind": "compra"|"venta"|"devolucion"|"merma"|"ajuste"|"inicial","wa_kind": "pedido_recibido"|"aviso_negocio"|"en_camino"|"informe_semanal"|"stock_bajo","wa_status": "pendiente"|"enviado"|"simulado"|"fallido"|"omitido"
+            "consent_kind": "datos_pedido"|"promociones"|"cupon_bienvenida"|"cotizacion","coupon_kind": "porcentaje"|"valor"|"envio"|"regalo","intro_mode": "completa"|"aviso"|"ninguna","order_channel": "web"|"whatsapp"|"manual"|"rappi"|"didi","order_status": "nuevo"|"confirmado"|"en_cocina"|"en_camino"|"entregado"|"cancelado","protection_level": "basica"|"recomendada"|"estricta","quote_status": "nueva"|"contactada"|"cerrada","staff_role": "admin"|"operador","supply_move_kind": "compra"|"venta"|"devolucion"|"merma"|"ajuste"|"inicial","wa_kind": "pedido_recibido"|"aviso_negocio"|"en_camino"|"informe_semanal"|"stock_bajo"|"pedido_cancelado","wa_status": "pendiente"|"enviado"|"simulado"|"fallido"|"omitido"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -822,7 +900,7 @@ export const Constants = {
           }
         },"public": {
           Enums: {
-            "consent_kind": ["datos_pedido", "promociones", "cupon_bienvenida", "cotizacion"],"coupon_kind": ["porcentaje", "valor", "envio", "regalo"],"intro_mode": ["completa", "aviso", "ninguna"],"order_channel": ["web", "whatsapp", "manual", "rappi", "didi"],"order_status": ["nuevo", "confirmado", "en_cocina", "en_camino", "entregado", "cancelado"],"protection_level": ["basica", "recomendada", "estricta"],"quote_status": ["nueva", "contactada", "cerrada"],"staff_role": ["admin", "operador"],"supply_move_kind": ["compra", "venta", "devolucion", "merma", "ajuste", "inicial"],"wa_kind": ["pedido_recibido", "aviso_negocio", "en_camino", "informe_semanal", "stock_bajo"],"wa_status": ["pendiente", "enviado", "simulado", "fallido", "omitido"]
+            "consent_kind": ["datos_pedido", "promociones", "cupon_bienvenida", "cotizacion"],"coupon_kind": ["porcentaje", "valor", "envio", "regalo"],"intro_mode": ["completa", "aviso", "ninguna"],"order_channel": ["web", "whatsapp", "manual", "rappi", "didi"],"order_status": ["nuevo", "confirmado", "en_cocina", "en_camino", "entregado", "cancelado"],"protection_level": ["basica", "recomendada", "estricta"],"quote_status": ["nueva", "contactada", "cerrada"],"staff_role": ["admin", "operador"],"supply_move_kind": ["compra", "venta", "devolucion", "merma", "ajuste", "inicial"],"wa_kind": ["pedido_recibido", "aviso_negocio", "en_camino", "informe_semanal", "stock_bajo", "pedido_cancelado"],"wa_status": ["pendiente", "enviado", "simulado", "fallido", "omitido"]
           }
         }
 } as const

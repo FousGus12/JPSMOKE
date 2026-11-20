@@ -191,6 +191,55 @@
   pointer-events: none;
 }
 
+/* Comanda de cocina (D66): letra grande, sin precios. */
+.recibo-frame {
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.recibo-kitchen-head {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 2px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed #000;
+}
+.recibo-kitchen-head p {
+  margin: 0;
+}
+.recibo-kitchen-kind {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.recibo-kitchen-code {
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+.recibo-kitchen-delivery {
+  font-size: 17px;
+  font-weight: 700;
+}
+.recibo-kitchen-items {
+  margin-top: 10px;
+  gap: 6px;
+  font-size: 17px;
+  font-weight: 700;
+}
+.recibo-kitchen-items .recibo-addon {
+  font-size: 15px;
+  font-weight: 400;
+}
+.recibo-kitchen-note {
+  margin: 10px 0 0;
+  font-size: 19px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
 @page tirilla58 {
   size: 58mm auto;
   margin: 2mm;
@@ -251,6 +300,13 @@
     width: 100mm;
     margin: 0 auto;
     font-size: 13px;
+  }
+  .recibo-doc + .recibo-doc {
+    break-before: page;
+    page-break-before: always;
+  }
+  .recibo-kitchen-items {
+    font-size: 16px;
   }
   .recibo-t58 .recibo-frame {
     page: tirilla58;

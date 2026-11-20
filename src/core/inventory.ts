@@ -127,3 +127,82 @@ export function parseInput(text: string): number {
   if (/^\d{1,3}(\.\d{3})+$/.test(clean)) return Number(clean.replace(/\./g, ''));
   return Number(clean);
 }
+
+// ---------------------------------------------------------------------------
+// D66 · lista de compras desde insumos en o bajo el mínimo, en unidades de compra.
+
+export interface ShoppingSupply extends SupplyCost {
+  stock: number;
+  minStock: number;
+  initialStock: number | null;
+  unit: string;
+  purchaseUnit: string;
+  active: boolean;
+}
+export interface ShoppingItem {
+  id: string;
+  name: string;
+  /** Unidades de compra a comprar (entero, redondeado hacia arriba). */
+  qty: number;
+  purchaseUnit: string;
+  /** Costo estimado en COP; null si el insumo no tiene costo. */
+  cost: number | null;
+}
+export interface ShoppingList {
+  items: ShoppingItem[];
+  /** Suma de lo que sí tiene costo. */
+  total: number;
+  /** Cuántos renglones quedaron sin costo (el total es incompleto). */
+  withoutCost: number;
+}
+
+/**
+ * Insumos activos con existencia ≤ mínimo. Se compra hasta el Inicial (si es mayor a lo que hay) o,
+ * si no hay Inicial útil, hasta 2× el mínimo; en unidades de compra, hacia arriba.
+ */
+export function shoppingList(supplies: ShoppingSupply[]): ShoppingList {
+  const items: ShoppingItem[] = [];
+  for (const supply of supplies) {
+    if (!supply.active || supply.stock > supply.minStock || !(supply.perPurchase > 0)) continue;
+    const initial = supply.initialStock;
+    const target = initial !== null && initial > supply.stock ? initial : supply.minStock * 2;
+    const missingUse = target - supply.stock;
+    if (!(missingUse > 0)) continue;
+    // El redondeo a 1e-9 evita que 0.1 × 3 de coma flotante suba un paquete de más.
+    const qty = Math.ceil(Math.round((missingUse / supply.perPurchase) * 1e9) / 1e9);
+    const unit = costPerUse(supply);
+    items.push({
+      id: supply.id,
+      name: supply.name,
+      qty,
+      purchaseUnit: supply.purchaseUnit,
+      cost: unit === null ? null : cents(unit * supply.perPurchase * qty),
+    });
+  }
+  items.sort((left, right) => left.name.localeCompare(right.name, 'es-CO'));
+  return {
+    items,
+    total: cents(items.reduce((sum, item) => sum + (item.cost ?? 0), 0)),
+    withoutCost: items.filter((item) => item.cost === null).length,
+  };
+}
+
+/** Texto para copiar o mandar por WhatsApp. `dateText` ya viene en fecha de Bogotá. */
+export function shoppingText(list: ShoppingList, dateText: string, money: (value: number) => string): string {
+  const lines = ['JP Smoke · lista de compras', dateText, ''];
+  for (const item of list.items) {
+    lines.push(
+      `• ${item.name}: ${qtyText(item.qty)} ${item.purchaseUnit} (${item.cost === null ? 'sin costo' : money(item.cost)})`,
+    );
+  }
+  lines.push(
+    '',
+    `Total estimado: ${money(list.total)}${list.withoutCost ? ` (sin contar ${list.withoutCost} sin costo)` : ''}`,
+  );
+  return lines.join('\n');
+}
+
+/** Enlace de WhatsApp sin destinatario: el dueño elige a quién enviarlo. */
+export function whatsappShareUrl(text: string): string {
+  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+}

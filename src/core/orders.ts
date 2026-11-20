@@ -88,6 +88,8 @@ export function statusErrorText(error: { code?: string | null; message?: string 
       : 'No tienes permiso para cambiar este pedido.';
   if (message.includes('ya está cancelado')) return 'Ese pedido ya estaba cancelado.';
   if (message.includes('ya está cerrado')) return 'Ese pedido ya está cerrado.';
+  if (message.includes('insumos se conservan'))
+    return 'Ese pedido aún no entra al barril: sus insumos siempre vuelven al inventario.';
   if (message.includes('motivo')) return 'Escribe el motivo (mínimo 3 letras).';
   if (message.includes('no sigue')) return 'Ese pedido ya cambió de estado. Revisa el tablero.';
   return 'No se pudo cambiar el estado. Revisa la conexión e intenta de nuevo.';
@@ -271,4 +273,98 @@ export function edgeScroll(x: number, left: number, right: number, edge = 56, ma
 /** El gesto con mouse se vuelve arrastre al pasar el umbral (6 px), para no confundirlo con un clic. */
 export function passedThreshold(dx: number, dy: number, threshold = 6): boolean {
   return dx * dx + dy * dy > threshold * threshold;
+}
+
+/* Anular o cancelar con mensaje para el cliente (D59). La base corta el público a 160 y el interno a 200. */
+
+/** Mensajes cortos que ve el cliente en el seguimiento y en WhatsApp. "Otro" pide texto. */
+export const PUBLIC_CANCEL_MESSAGES = [
+  'Nos quedamos sin un producto',
+  'No llegamos a tu zona',
+  'Problema con el pago',
+  'Otro',
+] as const;
+export type PublicCancelChoice = (typeof PUBLIC_CANCEL_MESSAGES)[number];
+export const PUBLIC_CANCEL_MAX = 160;
+
+/**
+ * Mensaje público que se manda a la base: '' (ninguno elegido) → null; "Otro" exige 3 a 160 caracteres
+ * (undefined si falta). Los demás van tal cual.
+ */
+export function publicCancelText(choice: PublicCancelChoice | '', other: string): string | null | undefined {
+  if (!choice) return null;
+  if (choice !== 'Otro') return choice;
+  const text = other.trim().replace(/\s+/g, ' ');
+  return text.length >= 3 ? text.slice(0, PUBLIC_CANCEL_MAX) : undefined;
+}
+
+/** Desde En el barril ya se usaron insumos: el modal pregunta si vuelven al inventario (D59). Antes siempre vuelven. */
+export function asksRestore(status: OrderStatus): boolean {
+  return status === 'en_cocina' || status === 'en_camino' || status === 'entregado';
+}
+
+/** Valor de p_restore: la respuesta solo cuenta cuando se pregunta (la base rechaza conservar antes de En el barril). */
+export function restoreFlag(status: OrderStatus, answer: boolean): boolean {
+  return asksRestore(status) ? answer : true;
+}
+
+/** Enlace de WhatsApp para avisar la anulación al cliente (código y mensaje público), sin envío automático (D48). */
+export function cancelWhatsApp(
+  phone: string,
+  name: string,
+  code: string,
+  restaurant: string,
+  message: string,
+): string {
+  const first = name.trim().split(/\s+/)[0] ?? '';
+  const text = `Hola ${first}, te escribimos de ${restaurant}: tu pedido ${code} fue cancelado. ${message.trim()}`;
+  return `https://wa.me/57${phone}?text=${encodeURIComponent(text.replace(/\s+/g, ' ').trim())}`;
+}
+
+/* Deshacer al marcar Entregado (D60): el cambio sale a los 10 s salvo que se deshaga. */
+
+export const DELIVER_UNDO_MS = 10_000;
+
+/** Segundos que se muestran en "Deshacer (N s)": redondea hacia arriba y nunca baja de 0. */
+export function undoSecondsLeft(deadline: number, now: number): number {
+  return Math.max(0, Math.ceil((deadline - now) / 1000));
+}
+
+/** Entregas diferidas cuyo pedido cambió (otro dispositivo) o desapareció: no se envían para no pisar. */
+export function deferredConflicts(
+  orders: ReadonlyArray<{ id: string; status: OrderStatus }>,
+  deferred: ReadonlyMap<string, { from: OrderStatus }>,
+): string[] {
+  const byId = new Map(orders.map((order) => [order.id, order.status]));
+  return [...deferred].filter(([id, entry]) => byId.get(id) !== entry.from).map(([id]) => id);
+}
+
+/* Cancelados de hoy (D60): por la hora del evento de anulación, no por la del pedido. */
+
+export interface CancellableOrder {
+  id: string;
+  status: OrderStatus;
+  is_test?: boolean | null;
+  order_events: ReadonlyArray<{ status: OrderStatus; at: string; by_user?: string | null }>;
+}
+
+/**
+ * Pedidos anulados o cancelados hoy en Bogotá, el más reciente primero, con la hora y quién lo hizo.
+ * Los de prueba no cuentan como cancelados (D42).
+ */
+export function cancelledToday<T extends CancellableOrder>(
+  orders: T[],
+  now: number,
+): Array<{ order: T; at: string; byUser: string | null }> {
+  const today = startOfBogotaDay(now);
+  const out: Array<{ order: T; at: string; byUser: string | null }> = [];
+  for (const order of orders) {
+    if (order.status !== 'cancelado' || order.is_test) continue;
+    const event = [...order.order_events]
+      .filter((item) => item.status === 'cancelado')
+      .sort((first, second) => second.at.localeCompare(first.at))[0];
+    if (!event || new Date(event.at).getTime() < today) continue;
+    out.push({ order, at: event.at, byUser: event.by_user ?? null });
+  }
+  return out.sort((first, second) => second.at.localeCompare(first.at));
 }

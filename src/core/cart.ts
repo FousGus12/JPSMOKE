@@ -193,3 +193,107 @@ export function dropAddonsWithoutDish(
   const removed = lines.filter((line) => !kept.includes(line)).reduce((sum, line) => sum + line.qty, 0);
   return { lines: kept, removed };
 }
+
+/* ---------- Repetir el último pedido (D63) ---------- */
+
+/** Lo que guarda el navegador del último pedido confirmado: solo líneas (sin precios ni datos). */
+export interface LastOrder {
+  at: number;
+  lines: CartLine[];
+}
+
+/** Copia del pedido recién confirmado. */
+export function snapshotOrder(lines: CartLine[], at: number): LastOrder {
+  return {
+    at,
+    lines: lines.map(({ productId, qty, combo, key, parent }) => ({
+      productId,
+      qty,
+      combo,
+      ...(key ? { key } : {}),
+      ...(parent ? { parent } : {}),
+    })),
+  };
+}
+
+const KEY = /^[A-Za-z0-9-]{1,40}$/;
+
+/** Lee lo guardado; null si no hay nada usable (formato viejo o dañado). */
+export function readLastOrder(raw: unknown): LastOrder | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { at, lines } = raw as Record<string, unknown>;
+  if (typeof at !== 'number' || !Array.isArray(lines)) return null;
+  const clean: CartLine[] = [];
+  for (const item of lines.slice(0, 30) as unknown[]) {
+    if (!item || typeof item !== 'object') continue;
+    const line = item as Record<string, unknown>;
+    if (typeof line.productId !== 'string' || !line.productId) continue;
+    const qty = Number(line.qty);
+    if (!Number.isInteger(qty) || qty < 1 || qty > 30) continue;
+    clean.push({
+      productId: line.productId,
+      qty,
+      combo: line.combo === true,
+      ...(typeof line.key === 'string' && KEY.test(line.key) ? { key: line.key } : {}),
+      ...(typeof line.parent === 'string' && KEY.test(line.parent) ? { parent: line.parent } : {}),
+    });
+  }
+  return clean.length ? { at, lines: clean } : null;
+}
+
+export interface RepeatResult {
+  lines: CartLine[];
+  /** Productos que ya no se pueden pedir (agotados, ocultos o adiciones que se quedaron sin plato). */
+  missing: string[];
+  /** Productos que vuelven sin combo (el combo se agotó o ya no existe). */
+  noCombo: string[];
+}
+
+/**
+ * Arma el carrito del último pedido con la carta en vivo: descarta agotados y ocultos (no están en
+ * `products`), quita el combo si ya no se puede y da llaves nuevas (las adiciones siguen a su plato;
+ * si el plato no está, la adición queda aparte y, sin ningún plato, se descarta).
+ */
+export function repeatOrder(
+  saved: LastOrder,
+  options: {
+    products: CartProduct[];
+    comboOut?: ReadonlySet<string>;
+    isAddon: (productId: string) => boolean;
+    newKey: () => string;
+  },
+): RepeatResult {
+  const byId = new Map(options.products.map((product) => [product.id, product]));
+  const missing: string[] = [];
+  const noCombo: string[] = [];
+  const keys = new Map<string, string>();
+  const kept: CartLine[] = [];
+  for (const line of saved.lines) {
+    const product = byId.get(line.productId);
+    if (!product?.available) {
+      missing.push(line.productId);
+      continue;
+    }
+    const key = options.newKey();
+    if (line.key) keys.set(line.key, key);
+    const comboOk = product.comboPrice !== null && !options.comboOut?.has(line.productId);
+    if (line.combo && !comboOk) noCombo.push(line.productId);
+    kept.push({
+      productId: line.productId,
+      qty: line.qty,
+      combo: line.combo && comboOk,
+      key,
+      ...(line.parent ? { parent: line.parent } : {}),
+    });
+  }
+  // Padres con llave nueva; si el plato no volvió, la adición queda aparte.
+  const relinked = kept.map(({ parent, ...line }) => {
+    const to = parent ? keys.get(parent) : undefined;
+    return to && kept.some((other) => other.key === to && !other.parent) ? { ...line, parent: to } : line;
+  });
+  const result = dropAddonsWithoutDish(relinked, options.isAddon);
+  if (result.removed) {
+    for (const line of relinked) if (!result.lines.includes(line)) missing.push(line.productId);
+  }
+  return { lines: result.lines, missing: [...new Set(missing)], noCombo: [...new Set(noCombo)] };
+}

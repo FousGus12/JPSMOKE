@@ -159,6 +159,60 @@ export function buildReceipt(order: ReceiptOrderInput, business: ReceiptBusiness
   };
 }
 
+export interface KitchenItem {
+  qty: number;
+  name: string;
+  addon: boolean;
+}
+/** Comanda de cocina (D66): sin precios, celular ni dirección completa. */
+export interface KitchenTicket {
+  code: string;
+  timeText: string;
+  /** "Domicilio · Chapinero" o "Recoge en tienda". */
+  delivery: string;
+  items: KitchenItem[];
+  gift: string | null;
+  notes: string;
+  voided: boolean;
+}
+
+const timeFormat = new Intl.DateTimeFormat('es-CO', {
+  timeZone: 'America/Bogota',
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true,
+});
+
+/** "3:45 p.m." en hora de Bogotá, con espacio duro para que no se parta. */
+export function receiptTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = timeFormat.formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? '';
+  return `${part('hour')}:${part('minute')}\u00a0${part('dayPeriod').replace(/\s+/g, '')}`;
+}
+
+export function buildKitchenTicket(order: ReceiptOrderInput): KitchenTicket {
+  const items = nestItems(
+    order.order_items.map((item) => ({ ...item, parent: item.parent_item_id })),
+  ).map<KitchenItem>((item) => ({
+    qty: item.qty,
+    name: item.combo ? `${item.name} (combo)` : item.name,
+    addon: item.isAddon,
+  }));
+  const barrio = order.barrio.trim();
+  return {
+    code: order.code,
+    timeText: receiptTime(order.created_at),
+    delivery:
+      order.fulfillment === 'recoger' ? 'Recoge en tienda' : barrio ? `Domicilio · ${barrio}` : 'Domicilio',
+    items,
+    gift: order.gift,
+    notes: order.notes.trim(),
+    voided: order.status === 'cancelado',
+  };
+}
+
 /** Parte un texto en renglones de máximo `max` caracteres (para dibujar el SVG compartido). */
 export function wrapText(text: string, max: number): string[] {
   const lines: string[] = [];

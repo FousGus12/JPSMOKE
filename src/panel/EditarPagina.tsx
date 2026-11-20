@@ -2,18 +2,27 @@ import { useCallback, useEffect, useState } from 'react';
 import { formatCop as money } from '../core/money';
 import {
   BOGOTA_LOCALITIES,
+  COPY_DEFAULTS,
+  COPY_MAX,
+  COPY_SECTIONS,
+  cleanBlocks,
   deletePayment,
   isHttps,
   parseCoordinate,
   parseCoordinatePair,
   loadSettings,
+  loadEtaPreview,
   loadZonesAndPayments,
+  photoUrl,
   publishSite,
   saveSettings,
+  uploadPhoto,
   upsertPayment,
   upsertZone,
   type EditPayment,
   type EditZone,
+  type SectionCopy,
+  type SiteBlocks,
   type SiteSettings,
 } from './editor';
 import { useToast } from './ui';
@@ -52,6 +61,7 @@ export function EditarPagina({ restaurantId }: { restaurantId: string }) {
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [coordsInvalid, setCoordsInvalid] = useState(false);
+  const [etaVersion, setEtaVersion] = useState(0);
 
   useEffect(() => {
     loadSettings(restaurantId)
@@ -83,16 +93,24 @@ export function EditarPagina({ restaurantId }: { restaurantId: string }) {
         blocks,
         delivery_min,
         delivery_eta,
+        eta_dynamic,
+        eta_per_order_min,
+        eta_max_extra_min,
         accepting_orders,
         store_open,
         store_hours,
       } = settings;
+      // Campos vacíos no se guardan: la página usa el texto por defecto (D56).
+      const cleanedBlocks = cleanBlocks(blocks);
       await saveSettings(restaurantId, {
         hero,
         sections,
-        blocks,
+        blocks: cleanedBlocks,
         delivery_min,
         delivery_eta,
+        eta_dynamic,
+        eta_per_order_min,
+        eta_max_extra_min,
         accepting_orders,
         store_open,
         store_address: address,
@@ -103,6 +121,8 @@ export function EditarPagina({ restaurantId }: { restaurantId: string }) {
         // Recoger exige local abierto y dirección (la base también lo exige).
         pickup_enabled: settings.pickup_enabled && store_open && Boolean(address),
       });
+      setSettings((current) => (current ? { ...current, blocks: cleanedBlocks } : current));
+      setEtaVersion((value) => value + 1);
       setDirty(false);
       toast('Cambios guardados. Toca Publicar para verlos en la página.');
     } catch (failure) {
@@ -123,6 +143,7 @@ export function EditarPagina({ restaurantId }: { restaurantId: string }) {
     } else toast(result.message);
   }
 
+  const setBlocks = (patch: Partial<SiteBlocks>) => edit({ blocks: { ...settings.blocks, ...patch } });
   const promo = settings.blocks.promo ?? {};
   const tour = settings.blocks.tour ?? {};
   const cards = tour.cards ?? [
@@ -235,6 +256,15 @@ export function EditarPagina({ restaurantId }: { restaurantId: string }) {
                 max={200}
                 onChange={(text) => edit({ blocks: { ...settings.blocks, promo: { ...promo, text } } })}
               />
+              <ImageField
+                label="Imagen de la promo"
+                restaurantId={restaurantId}
+                value={promo.image}
+                fallback="sitio/brasas.webp"
+                onChange={(image) =>
+                  edit({ blocks: { ...settings.blocks, promo: { ...promo, image: image ?? undefined } } })
+                }
+              />
               <div className="form-2">
                 <Text
                   label="Botón"
@@ -276,6 +306,15 @@ export function EditarPagina({ restaurantId }: { restaurantId: string }) {
                 max={200}
                 onChange={(text) => edit({ blocks: { ...settings.blocks, tour: { ...tour, text } } })}
               />
+              <ImageField
+                label="Imagen de eventos"
+                restaurantId={restaurantId}
+                value={tour.image}
+                fallback="sitio/costillas-parrilla.webp"
+                onChange={(image) =>
+                  edit({ blocks: { ...settings.blocks, tour: { ...tour, image: image ?? undefined } } })
+                }
+              />
               {cards.map((card, i) => (
                 <div className="form-2" key={i}>
                   <Text
@@ -314,6 +353,90 @@ export function EditarPagina({ restaurantId }: { restaurantId: string }) {
               ))}
             </div>
           </section>
+          <section className="card span-2 titulos-card" aria-label="Títulos de sección">
+            <div className="card-head">
+              <div>
+                <h2>Títulos de sección</h2>
+                <p>
+                  Lo gris es el texto actual. Si dejas un campo vacío, la página usa ese texto. En el título,
+                  Enter hace un salto de línea.
+                </p>
+              </div>
+            </div>
+            <div className="copy-grid">
+              {COPY_SECTIONS.map((key) => (
+                <CopyCard
+                  key={key}
+                  name={`titles-${key}`}
+                  heading={SECTION_LABEL[key] ?? key}
+                  value={settings.blocks.titles?.[key]}
+                  defaults={COPY_DEFAULTS.titles[key]}
+                  onChange={(value) => setBlocks({ titles: { ...settings.blocks.titles, [key]: value } })}
+                />
+              ))}
+            </div>
+          </section>
+          <section className="card" aria-label="Cierre">
+            <div className="card-head">
+              <div>
+                <h2>Cierre</h2>
+                <p>El bloque con humo al final de la página</p>
+              </div>
+            </div>
+            <CopyCard
+              name="final"
+              ariaName="Cierre"
+              value={settings.blocks.final}
+              defaults={COPY_DEFAULTS.final}
+              button={{ label: 'Botón', max: COPY_MAX.button }}
+              onChange={(value) => setBlocks({ final: { ...settings.blocks.final, ...value } })}
+            />
+          </section>
+          <section className="card" aria-label="Botones del inicio">
+            <div className="card-head">
+              <div>
+                <h2>Botones del inicio</h2>
+                <p>Los botones de arriba, el de WhatsApp y la nota bajo ellos</p>
+              </div>
+            </div>
+            <div className="form">
+              <Text
+                label="Botón principal"
+                name="cta-primary"
+                value={settings.blocks.cta?.primary}
+                placeholder={COPY_DEFAULTS.cta.primary}
+                max={COPY_MAX.button}
+                onChange={(primary) => setBlocks({ cta: { ...settings.blocks.cta, primary } })}
+              />
+              <Text
+                label="Botón de WhatsApp"
+                name="cta-whatsapp"
+                value={settings.blocks.cta?.whatsapp}
+                placeholder={COPY_DEFAULTS.cta.whatsapp}
+                max={COPY_MAX.button}
+                onChange={(whatsapp) => setBlocks({ cta: { ...settings.blocks.cta, whatsapp } })}
+              />
+              <Text
+                label="Nota sin local abierto"
+                name="cta-note-closed"
+                value={settings.blocks.cta?.note_closed}
+                placeholder={COPY_DEFAULTS.cta.note_closed}
+                max={COPY_MAX.note}
+                onChange={(note_closed) => setBlocks({ cta: { ...settings.blocks.cta, note_closed } })}
+              />
+              <Text
+                label="Nota con local abierto"
+                name="cta-note-open"
+                value={settings.blocks.cta?.note_open}
+                placeholder={COPY_DEFAULTS.cta.note_open}
+                max={COPY_MAX.note}
+                onChange={(note_open) => setBlocks({ cta: { ...settings.blocks.cta, note_open } })}
+              />
+              <small className="muted">
+                La nota cambia sola según el interruptor “El local está abierto al público” (Punto físico).
+              </small>
+            </div>
+          </section>
         </div>
       ) : null}
 
@@ -349,7 +472,12 @@ export function EditarPagina({ restaurantId }: { restaurantId: string }) {
       ) : null}
 
       {tab === 'pedidos' ? (
-        <DeliveryAndPayments restaurantId={restaurantId} settings={settings} edit={edit} />
+        <DeliveryAndPayments
+          restaurantId={restaurantId}
+          settings={settings}
+          edit={edit}
+          etaVersion={etaVersion}
+        />
       ) : null}
 
       {tab === 'local' ? <Store settings={settings} edit={edit} onInvalid={setCoordsInvalid} /> : null}
@@ -544,14 +672,23 @@ function Text({
   onChange,
   max,
   area = false,
+  name,
+  placeholder,
+  ariaLabel,
+  rows,
 }: {
   label: string;
   value: string | undefined;
   onChange: (value: string) => void;
   max: number;
   area?: boolean;
+  /** Identificador estable cuando la misma etiqueta se repite en varias tarjetas. */
+  name?: string | undefined;
+  placeholder?: string | undefined;
+  ariaLabel?: string | undefined;
+  rows?: number | undefined;
 }) {
-  const id = `ed-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  const id = `ed-${(name ?? label).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
   return (
     <div className="field">
       <label htmlFor={id}>{label}</label>
@@ -560,6 +697,9 @@ function Text({
           className="textarea"
           id={id}
           maxLength={max}
+          rows={rows}
+          placeholder={placeholder}
+          aria-label={ariaLabel}
           value={value ?? ''}
           onChange={(event) => onChange(event.target.value)}
         />
@@ -568,6 +708,8 @@ function Text({
           className="input"
           id={id}
           maxLength={max}
+          placeholder={placeholder}
+          aria-label={ariaLabel}
           value={value ?? ''}
           onChange={(event) => onChange(event.target.value)}
         />
@@ -576,16 +718,158 @@ function Text({
   );
 }
 
+/** Antetítulo, título (Enter = salto) y texto de una sección; opcionalmente un botón. El marcador es el texto actual. */
+function CopyCard({
+  name,
+  heading,
+  value,
+  defaults,
+  button,
+  onChange,
+  ariaName,
+}: {
+  name: string;
+  heading?: string;
+  /** Nombre para las etiquetas accesibles cuando la tarjeta no lleva título propio (p. ej. "Cierre"). */
+  ariaName?: string;
+  value: (SectionCopy & { button?: string }) | undefined;
+  defaults: SectionCopy & { button?: string };
+  button?: { label: string; max: number };
+  onChange: (value: SectionCopy & { button?: string }) => void;
+}) {
+  const current = value ?? {};
+  const set = (key: 'kicker' | 'title' | 'text' | 'button') => (text: string) =>
+    onChange({ ...current, [key]: text });
+  const tag = heading || ariaName ? ` de ${heading ?? ariaName}` : '';
+  return (
+    <div className="copy-card" data-testid={`copy-${name}`}>
+      {heading ? <h3>{heading}</h3> : null}
+      <Text
+        label="Antetítulo"
+        name={`${name}-kicker`}
+        ariaLabel={`Antetítulo${tag}`}
+        value={current.kicker}
+        placeholder={defaults.kicker}
+        max={COPY_MAX.kicker}
+        onChange={set('kicker')}
+      />
+      <Text
+        label="Título"
+        name={`${name}-title`}
+        ariaLabel={`Título${tag}`}
+        area
+        rows={2}
+        value={current.title}
+        placeholder={defaults.title}
+        max={COPY_MAX.title}
+        onChange={set('title')}
+      />
+      <Text
+        label="Texto"
+        name={`${name}-text`}
+        ariaLabel={`Texto${tag}`}
+        area
+        rows={2}
+        value={current.text}
+        placeholder={defaults.text}
+        max={COPY_MAX.text}
+        onChange={set('text')}
+      />
+      {button ? (
+        <Text
+          label={button.label}
+          name={`${name}-button`}
+          ariaLabel={`${button.label}${tag}`}
+          value={current.button}
+          placeholder={defaults.button}
+          max={button.max}
+          onChange={set('button')}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/** Imagen de un bloque: se sube con la misma función que la carta (carpeta del restaurante). Sin imagen = la original. */
+function ImageField({
+  label,
+  restaurantId,
+  value,
+  fallback,
+  onChange,
+}: {
+  label: string;
+  restaurantId: string;
+  value: string | undefined;
+  fallback: string;
+  onChange: (path: string | null) => void;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  async function pick(file: File | undefined) {
+    if (!file) return;
+    setBusy(true);
+    try {
+      onChange(await uploadPhoto(restaurantId, file));
+      toast('Imagen subida. Guarda y publica para verla.');
+    } catch (failure) {
+      toast(failure instanceof Error ? failure.message : 'No se pudo subir la imagen.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="field">
+      <label htmlFor={`img-${label}`}>{label}</label>
+      <div className="photo-row">
+        <img
+          className="thumb thumb-lg"
+          src={photoUrl(value || fallback) ?? ''}
+          alt={value ? `${label} actual` : `${label} original`}
+        />
+        <input
+          id={`img-${label}`}
+          type="file"
+          accept="image/*"
+          disabled={busy}
+          onChange={(event) => {
+            void pick(event.target.files?.[0]);
+            event.target.value = '';
+          }}
+        />
+        {value ? (
+          <button className="btn btn-soft btn-sm" type="button" onClick={() => onChange(null)}>
+            Volver a la original
+          </button>
+        ) : null}
+      </div>
+      <span className="hint">Se reduce a 1200 px y se guarda liviana, sin metadatos de ubicación.</span>
+    </div>
+  );
+}
+
 function DeliveryAndPayments({
   restaurantId,
   settings,
   edit,
+  etaVersion,
 }: {
   restaurantId: string;
   settings: SiteSettings;
   edit: (patch: Partial<SiteSettings>) => void;
+  etaVersion: number;
 }) {
   const toast = useToast();
+  const [eta, setEta] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    let alive = true;
+    void loadEtaPreview().then((text) => {
+      if (alive) setEta(text);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [etaVersion]);
   const [zones, setZones] = useState<EditZone[]>([]);
   const [payments, setPayments] = useState<EditPayment[]>([]);
   const [newZone, setNewZone] = useState('');
@@ -665,6 +949,60 @@ function DeliveryAndPayments({
             />
           </div>
         </div>
+        <div className="rows">
+          <div className="row">
+            <div>
+              <b>Hora estimada dinámica</b>
+              <small>
+                Suma minutos al tiempo de entrega según los pedidos activos (nuevo, confirmado, en el barril y
+                en camino).
+              </small>
+            </div>
+            <label className="switch">
+              <input
+                type="checkbox"
+                aria-label="Hora estimada dinámica"
+                checked={settings.eta_dynamic}
+                onChange={(event) => edit({ eta_dynamic: event.target.checked })}
+              />
+              <span />
+            </label>
+          </div>
+        </div>
+        {settings.eta_dynamic ? (
+          <div className="form-2">
+            <div className="field">
+              <label htmlFor="ed-eta-per">Minutos por pedido activo</label>
+              <input
+                className="input"
+                id="ed-eta-per"
+                inputMode="numeric"
+                value={settings.eta_per_order_min}
+                onChange={(event) => edit({ eta_per_order_min: Math.min(30, toNumber(event.target.value)) })}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="ed-eta-max">Máximo de minutos extra</label>
+              <input
+                className="input"
+                id="ed-eta-max"
+                inputMode="numeric"
+                value={settings.eta_max_extra_min}
+                onChange={(event) => edit({ eta_max_extra_min: Math.min(180, toNumber(event.target.value)) })}
+              />
+            </div>
+          </div>
+        ) : null}
+        <p className="hint eta-preview" data-testid="eta-preview" role="status">
+          {eta === undefined
+            ? 'Calculando la hora estimada…'
+            : eta
+              ? `Ahora mismo el cliente ve: ${eta}.`
+              : 'No pudimos consultar la hora estimada.'}{' '}
+          {settings.eta_dynamic
+            ? 'El tiempo base debe verse como “30–40 min” o “35 min”; si no, se muestra tal cual. Guarda para actualizar esta vista.'
+            : 'Con la opción apagada se muestra el tiempo base.'}
+        </p>
         <div className="card-head">
           <div>
             <h2>Zonas de domicilio</h2>

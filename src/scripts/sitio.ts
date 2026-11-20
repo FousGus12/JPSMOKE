@@ -12,22 +12,34 @@ import {
   hasDish,
   normalizeCart,
   orderItems,
+  readLastOrder,
+  repeatOrder,
+  snapshotOrder,
   type CartCoupon,
   type CartLine,
   type CartProduct,
 } from '../core/cart';
+import {
+  antiBotWait,
+  attemptFor,
+  attemptSignature,
+  boundedMs,
+  canExpress,
+  createStopwatch,
+  readAttempt,
+  readOrderingStatus,
+  readSavedForm,
+  reopenDelay,
+  validateCustomer,
+  type Attempt,
+  type CustomerForm,
+  type OrderingStatus,
+} from '../core/checkout';
 import { formatCop as money } from '../core/money';
 import { normalizeColombianMobile } from '../core/phone';
-import { bogotaDay, forcedWelcome, welcomeToShow } from '../core/welcome';
-import {
-  rememberOrder,
-  recentOrders,
-  trackPath,
-  type Fulfillment,
-  type RememberedOrder,
-  ORDER_STEPS,
-} from '../core/tracking';
-import { mensajesPedido, type PedidoError } from '../../supabase/functions/_shared/mensajes';
+import { bogotaDay, forcedWelcome, isCurrent, welcomeToShow } from '../core/welcome';
+import { rememberOrder, recentOrders, trackPath, type RememberedOrder, ORDER_STEPS } from '../core/tracking';
+import { mensajePausa, mensajesPedido, type PedidoError } from '../../supabase/functions/_shared/mensajes';
 import { createTokenGate, type TokenGate } from '../core/token-gate';
 import {
   asLocalities,
@@ -204,8 +216,63 @@ function applyStockStatus(status: StockStatus) {
   dropOrphanAddons();
 }
 
+/* ---------- Pausa y hora estimada (D61) ----------
+   `ordering_status` dice si se reciben pedidos, hasta cuándo dura una pausa del equipo y la hora estimada
+   (calculada en la base). Si la RPC falla se usa `accepting_orders` de los ajustes. Al terminar la pausa se
+   vuelve a preguntar al servidor (no se reabre con el reloj del celular: la pausa pudo extenderse). */
+let pausedUntil: string | null = null;
+let reopenTimer = 0;
+function fetchOrderingStatus(): Promise<OrderingStatus | null> {
+  return fetch(`${data.supabaseUrl}/rest/v1/rpc/ordering_status`, {
+    method: 'POST',
+    headers: {
+      apikey: data.anonKey,
+      Authorization: `Bearer ${data.anonKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ p_restaurant: data.restaurant }),
+  })
+    .then((res) => (res.ok ? (res.json() as Promise<unknown>) : null))
+    .then(readOrderingStatus)
+    .catch(() => null);
+}
+function setPause(resumesAt: string | null) {
+  pausedUntil = resumesAt;
+  clearTimeout(reopenTimer);
+  const delay = reopenDelay(resumesAt, Date.now());
+  if (delay !== null) reopenTimer = window.setTimeout(() => void refreshStatus(), delay);
+}
+function applyStatus(status: OrderingStatus) {
+  data.acceptingOrders = status.accepting;
+  if (status.eta) data.deliveryEta = status.eta;
+  setPause(status.accepting ? null : status.resumesAt);
+}
+/** Solo el estado (al abrir el carrito y al terminar una pausa); repinta el carrito si está abierto. */
+async function refreshStatus() {
+  const status = await fetchOrderingStatus();
+  const before = `${data.acceptingOrders}|${pausedUntil}|${data.deliveryEta}`;
+  if (status) applyStatus(status);
+  else if (pausedUntil) {
+    // Sin respuesta tras la pausa: se reintenta en 30 s.
+    clearTimeout(reopenTimer);
+    reopenTimer = window.setTimeout(() => void refreshStatus(), 30_000);
+  }
+  // Solo si cambió algo: repintar borraría lo que el cliente está escribiendo (p. ej. el cupón).
+  if (`${data.acceptingOrders}|${pausedUntil}|${data.deliveryEta}` === before || qs('#cart')?.hidden) return;
+  const typed = qs<HTMLInputElement>('#coupon-in');
+  const draft = typed?.value ?? '';
+  const focused = document.activeElement === typed;
+  renderCart();
+  const fresh = qs<HTMLInputElement>('#coupon-in');
+  if (fresh && draft) fresh.value = draft;
+  if (fresh && focused) fresh.focus();
+}
+/** Aviso cuando no se reciben pedidos: con pausa, la hora en que volvemos. */
+const closedMessage = () =>
+  pausedUntil ? mensajePausa(pausedUntil) : 'En este momento no estamos recibiendo pedidos.';
+
 /** Zonas, medios de pago, mínimo y "recibiendo pedidos" también en vivo (F6): el admin los cambia sin publicar. */
-type Ordering = [settings: unknown, zones: unknown, payments: unknown];
+type Ordering = [settings: unknown, zones: unknown, payments: unknown, status: OrderingStatus | null];
 function fetchOrdering(): Promise<Ordering> {
   const rid = `restaurant_id=eq.${data.restaurantId}`;
   const safe = (path: string) => rest(path).catch(() => null);
@@ -215,9 +282,10 @@ function fetchOrdering(): Promise<Ordering> {
     ),
     safe(`delivery_zones?select=id,name,fee,active,locality_code&active=eq.true&order=position&${rid}`),
     safe(`payment_methods?select=code,label,asks_change&order=position&${rid}`),
+    fetchOrderingStatus(),
   ]);
 }
-function applyOrdering([settings, zones, payments]: Ordering) {
+function applyOrdering([settings, zones, payments, status]: Ordering) {
   const st = (
     settings as Array<{
       accepting_orders: boolean;
@@ -234,6 +302,8 @@ function applyOrdering([settings, zones, payments]: Ordering) {
     data.deliveryMin = st.delivery_min;
     data.deliveryEta = st.delivery_eta;
   }
+  // ordering_status manda (pausa y hora dinámica); sin respuesta queda la lectura de los ajustes.
+  if (status) applyStatus(status);
   if (Array.isArray(zones)) {
     data.zones = (
       zones as Array<{ id: string; name: string; fee: number; active: boolean; locality_code: string | null }>
@@ -424,6 +494,27 @@ if (!reduced) {
   }
 }
 
+/* ---------- Vigencia (D62) ----------
+   La franja y los eventos caducan por fecha (día de Bogotá) aunque el sitio no se vuelva a publicar. */
+(function hideExpired() {
+  const today = bogotaDay(new Date());
+  const expired = (el: HTMLElement) => !isCurrent(today, null, el.dataset.ends);
+  qsa<HTMLElement>('.strip-track a[data-ends]').forEach((link) => {
+    if (expired(link)) link.remove();
+  });
+  const strip = qs('.strip');
+  if (strip && !qs('.strip-track a', strip)) strip.hidden = true;
+  const events = qsa<HTMLElement>('#eventos .event[data-ends]');
+  events.forEach((event) => {
+    if (expired(event)) event.hidden = true;
+  });
+  const section = qs('#eventos');
+  if (section && events.length > 0 && events.every((event) => event.hidden)) {
+    section.hidden = true;
+    qsa<HTMLElement>('a[href$="#eventos"]').forEach((link) => (link.hidden = true));
+  }
+})();
+
 /* ---------- Franja de novedades: velocidad constante (px/s) en cualquier pantalla ---------- */
 function sizeStrip() {
   const track = qs<HTMLElement>('.strip-track');
@@ -539,6 +630,14 @@ qs('#carta-search')?.addEventListener('input', filterMenu);
 
 /* ---------- Carrito ---------- */
 const byId = (id: string) => products.find((product) => product.id === id);
+/** Miniatura WebP 96/192 px hecha al compilar (D56); sin ella, la foto original; sin foto, un recuadro. */
+function thumbImg(id: string, size: number): string {
+  const meta = info.get(id);
+  if (!meta?.image) return '<span class="ph"></span>';
+  if (!meta.thumb)
+    return `<img src="${esc(meta.image)}" alt="" width="${size}" height="${size}" decoding="async">`;
+  return `<img src="${esc(meta.thumb.src)}" srcset="${esc(meta.thumb.srcset)}" sizes="${size}px" alt="" width="${size}" height="${size}" decoding="async">`;
+}
 const count = () => cart.reduce((sum, line) => sum + line.qty, 0);
 function syncCount() {
   qsa('[data-cart-count]').forEach((el) => {
@@ -551,6 +650,49 @@ function syncCount() {
 function saveCart() {
   store.set('carrito', cart);
   syncCount();
+}
+
+/* ---------- Repetir mi último pedido (D63) ----------
+   Al confirmar se guardan las líneas del pedido en este navegador. Al repetir se revalidan con la carta
+   en vivo: lo agotado u oculto se descarta con aviso y el combo agotado vuelve como sola. */
+const LAST_ORDER = 'ultimo-pedido';
+let repeatNote = '';
+const lastOrder = () => readLastOrder(store.get<unknown>(LAST_ORDER, null));
+function syncRepeat() {
+  const has = Boolean(lastOrder());
+  qsa<HTMLButtonElement>('.hero-repeat[data-repeat-order]').forEach((btn) => (btn.hidden = !has));
+}
+let repeating = false;
+async function repeatLastOrder() {
+  const saved = lastOrder();
+  if (!saved || repeating) return;
+  repeating = true;
+  try {
+    await refreshAvailability(); // carta, inventario y precios en vivo antes de armar el carrito
+    const result = repeatOrder(saved, {
+      // Solo lo que el sitio conoce (nombre y foto) y sigue visible en vivo.
+      products: products.filter((product) => info.has(product.id)),
+      comboOut,
+      isAddon,
+      newKey,
+    });
+    const name = (id: string) => info.get(id)?.name ?? 'un producto';
+    const notes: string[] = [];
+    if (result.missing.length) notes.push(`Ya no está disponible: ${result.missing.map(name).join(', ')}.`);
+    if (result.noCombo.length) notes.push(`${result.noCombo.map(name).join(', ')} va sin combo (se agotó).`);
+    if (!result.lines.length) {
+      repeatNote = 'Lo de tu último pedido no está disponible ahora. Elige algo de la carta.';
+    } else {
+      cart = normalizeCart([...cart, ...result.lines], newKey);
+      saveCart();
+      repeatNote = notes.join(' ');
+      toast('Tu último pedido está en el carrito 🔥');
+    }
+    if (qs('#cart')?.hidden) openCart();
+    else renderCart();
+  } finally {
+    repeating = false;
+  }
 }
 function flyTo(from: Element | null) {
   if (reduced || !from) return;
@@ -636,10 +778,9 @@ function openAddonPicker(id: string, from: Element | null) {
   list.innerHTML =
     dishes
       .map((line) => {
-        const meta = info.get(line.productId);
         const many =
           line.qty > 1 ? `<small>Tienes ${line.qty}: se la agregamos a 1 de las ${line.qty}</small>` : '';
-        return `<button type="button" class="addon-opt" data-addon-to="${esc(line.key)}">${meta?.image ? `<img src="${esc(meta.image)}" alt="">` : '<span class="ph"></span>'}<span><b>${esc(lineLabel(line))}</b>${many}</span></button>`;
+        return `<button type="button" class="addon-opt" data-addon-to="${esc(line.key)}">${thumbImg(line.productId, 52)}<span><b>${esc(lineLabel(line))}</b>${many}</span></button>`;
       })
       .join('') +
     `<button type="button" class="addon-opt addon-apart" data-addon-to=""><span class="ph">＋</span><span><b>Aparte</b><small>No va con ningún plato</small></span></button>`;
@@ -686,6 +827,7 @@ function openCart() {
   returnFocus = document.activeElement as HTMLElement | null;
   void loadTurnstile(); // precarga: el token está listo al llegar a Confirmar
   renderCart();
+  void refreshStatus(); // D61: una pausa que empezó con la página abierta se ve al abrir el carrito
   const sheet = qs('#cart');
   const backdrop = qs('#cart-backdrop');
   if (sheet) sheet.hidden = false;
@@ -698,6 +840,7 @@ function closeCart() {
   const backdrop = qs('#cart-backdrop');
   if (sheet) sheet.hidden = true;
   if (backdrop) backdrop.hidden = true;
+  repeatNote = '';
   lockScroll(false);
   returnFocus?.focus();
 }
@@ -709,7 +852,10 @@ function renderCart() {
   const foot = qs('#cart-foot');
   if (!body || !foot) return;
   if (!cart.length) {
-    body.innerHTML = `<div class="cart-empty"><p class="display">Barril vacío</p><p>Todavía no has agregado nada.</p><a class="btn btn-primary" href="/#carta" data-close-cart>Ver la carta</a></div>`;
+    const repeat = lastOrder()
+      ? '<button class="btn btn-soft" type="button" data-repeat-order>↻ Repetir mi último pedido</button>'
+      : '';
+    body.innerHTML = `<div class="cart-empty"><p class="display">Barril vacío</p><p>Todavía no has agregado nada.</p>${repeatNote ? `<p class="cart-note repeat-note" role="status">${esc(repeatNote)}</p>` : ''}<a class="btn btn-primary" href="/#carta" data-close-cart>Ver la carta</a>${repeat}</div>`;
     foot.innerHTML = '';
     return;
   }
@@ -732,11 +878,16 @@ function renderCart() {
           : meta.addon
             ? 'Aparte'
             : '';
-      return `<div class="line">${meta.image ? `<img src="${esc(meta.image)}" alt="">` : '<span class="ph"></span>'}
+      return `<div class="line">${thumbImg(line.productId, 64)}
         <div><h4>${esc(meta.name)}</h4><small>${label}${label ? ' · ' : ''}${money(unit)}</small></div>
         <div class="qty"><button type="button" data-q="${key}" data-d="-1" aria-label="Quitar uno">−</button><span>${line.qty}</span><button type="button" data-q="${key}" data-d="1" aria-label="Agregar uno">＋</button></div></div>`;
     })
     .join('');
+  if (repeatNote)
+    body.insertAdjacentHTML(
+      'afterbegin',
+      `<p class="cart-note repeat-note" role="status">${esc(repeatNote)}</p>`,
+    );
   const upsell = comboUpsell(cart, products);
   if (upsell) {
     body.insertAdjacentHTML(
@@ -756,7 +907,7 @@ function renderCart() {
       <div><span>Domicilio</span><span class="muted">${coupon?.kind === 'envio' && sum.couponApplies ? 'Gratis' : 'Según tu barrio'}</span></div>
       <div class="grand"><span>Total</span><span>${money(sum.total)}</span></div></div>
     ${below ? `<p class="form-error">El pedido mínimo es ${money(data.deliveryMin)}. Te faltan ${money(sum.missingForMin)}.</p>` : ''}
-    ${!data.acceptingOrders ? '<p class="form-error">En este momento no estamos recibiendo pedidos.</p>' : ''}
+    ${!data.acceptingOrders ? `<p class="form-error" data-testid="pausa" role="status">${esc(closedMessage())}</p>` : ''}
     <button class="btn btn-primary btn-lg btn-block" type="button" id="go-checkout" ${below || !data.acceptingOrders ? 'disabled' : ''}>Continuar con el pedido</button>`;
   qs('#coupon-btn')?.addEventListener('click', () =>
     applyCoupon(qs<HTMLInputElement>('#coupon-in')?.value ?? '', false),
@@ -813,6 +964,10 @@ document.addEventListener('click', (event) => {
   const apply = target.closest<HTMLElement>('[data-apply-coupon]');
   if (apply) {
     applyCoupon(apply.dataset.applyCoupon ?? '', true);
+    return;
+  }
+  if (target.closest('[data-repeat-order]')) {
+    void repeatLastOrder();
     return;
   }
   if (target.closest('[data-open-cart]')) openCart();
@@ -982,33 +1137,13 @@ async function checkoutGeo(btn: HTMLButtonElement) {
   });
 }
 
-/* ---------- Pedido: datos → confirmar (un solo botón, D15) ---------- */
-interface Form {
-  mode: Fulfillment;
-  name: string;
-  phone: string;
-  address: string;
-  barrio: string;
-  zone: string;
-  notes: string;
-  pay: string;
-  cash: string;
-  ok: boolean;
-  promos: boolean;
-}
-const form: Form = store.get<Form>('datos', {
-  mode: 'domicilio',
-  name: '',
-  phone: '',
-  address: '',
-  barrio: '',
-  zone: '',
-  notes: '',
-  pay: '',
-  cash: '',
-  ok: false,
-  promos: false,
-});
+/* ---------- Pedido: datos → confirmar (un solo botón, D15) ----------
+   D63: con datos recordados completos y vigentes el pedido abre directo en Confirmar ("Cambiar datos"
+   vuelve a Datos). Se miden el tiempo en Datos (fill_ms) y de abrir el pedido a confirmar (checkout_ms). */
+const form: CustomerForm = readSavedForm(store.get<unknown>('datos', null));
+const checkoutCtx = () => ({ zones: data.zones, payments: data.payments, pickupEnabled: data.pickupEnabled });
+const dataWatch = createStopwatch();
+let checkoutOpenedAt = 0;
 // Tiempo mínimo antiabuso (elapsed_ms ≥ 4 s en el servidor): se cuenta desde la carga de la página y no se
 // reinicia al reabrir Datos; con datos recordados se confirmaba en menos de 4 s y quedaba como robot.
 const startedAt = Date.now();
@@ -1021,13 +1156,17 @@ function openCheckout() {
   if (modal) modal.hidden = false;
   lockScroll(true);
   mountTurnstile('pedido', qs('#checkout .modal-card'));
-  stepData();
+  checkoutOpenedAt = Date.now();
+  dataWatch.reset();
+  if (canExpress(form, checkoutCtx())) stepConfirm();
+  else stepData();
 }
 const pickup = () => form.mode === 'recoger' && data.pickupEnabled;
 function stepData(errorMsg = '') {
   setStep(0);
   const body = qs('#co-body');
   if (!body) return;
+  dataWatch.start(Date.now());
   if (!data.pickupEnabled) form.mode = 'domicilio';
   const asksChange = (code: string) =>
     data.payments.find((method) => method.code === code)?.asksChange ?? false;
@@ -1119,31 +1258,17 @@ function readForm() {
 }
 function submitData() {
   readForm();
-  let ok = fieldError(
-    '#f-name',
-    form.name.length < 3
-      ? 'Escribe tu nombre'
-      : /^[\p{L}](?:[\p{L} '-]|\.(?=\s|$))*$/u.test(form.name)
-        ? ''
-        : 'Escribe solo tu nombre, sin números ni símbolos',
-  );
-  ok =
-    fieldError(
-      '#f-phone',
-      normalizeColombianMobile(form.phone) ? '' : 'Celular colombiano de 10 dígitos (empieza por 3)',
-    ) && ok;
+  const errors = validateCustomer(form, checkoutCtx());
+  let ok = fieldError('#f-name', errors.name ?? '');
+  ok = fieldError('#f-phone', errors.phone ?? '') && ok;
   if (!pickup()) {
-    ok =
-      fieldError(
-        '#f-address',
-        !/\d/.test(form.address) || form.address.length < 8 ? 'Escribe la dirección completa con número' : '',
-      ) && ok;
-    ok = fieldError('#f-barrio', form.barrio.length < 3 ? 'Escribe tu barrio' : '') && ok;
-    ok = fieldError('#f-zone', form.zone ? '' : 'Elige tu localidad') && ok;
+    ok = fieldError('#f-address', errors.address ?? '') && ok;
+    ok = fieldError('#f-barrio', errors.barrio ?? '') && ok;
+    ok = fieldError('#f-zone', errors.zone ?? '') && ok;
   }
   const payErr = qs('#pay-error');
-  if (payErr) payErr.textContent = form.pay ? '' : 'Elige cómo pagas';
-  ok = Boolean(form.pay) && ok;
+  if (payErr) payErr.textContent = errors.pay ?? '';
+  ok = !errors.pay && ok;
   if (!form.ok) {
     toast('Necesitamos tu autorización de datos para entregar el pedido');
     ok = false;
@@ -1152,15 +1277,17 @@ function submitData() {
     qs<HTMLElement>('#co-form [aria-invalid="true"]')?.focus();
     return;
   }
-  // Se recuerdan para el próximo pedido en este navegador (sin cuenta).
+  // Se recuerdan para el próximo pedido en este navegador (sin cuenta). La autorización no.
   store.set('datos', { ...form, ok: false });
+  dataWatch.stop(Date.now());
   stepConfirm();
 }
 function stepConfirm(errorMsg = '') {
   setStep(1);
   const zone = pickup() ? null : data.zones.find((item) => item.id === form.zone);
   const body = qs('#co-body');
-  if ((!pickup() && !zone) || !body) return;
+  if (!body) return;
+  if (!pickup() && !zone) return stepData(); // la zona se apagó: a Datos a elegir otra
   const sum = totals(zone?.fee ?? 0);
   const pay = data.payments.find((method) => method.code === form.pay)?.label ?? form.pay;
   const phone = normalizeColombianMobile(form.phone) ?? '';
@@ -1188,6 +1315,11 @@ function stepConfirm(errorMsg = '') {
       <div class="grand"><span>Total</span><span>${money(sum.total)}</span></div>
       <div class="muted"><span>${esc(form.name)} · ${zone ? `${esc(form.address)}, ${esc(form.barrio)}` : esc(data.storeAddress)}</span><span>${esc(pay)}</span></div>
     </div>
+    ${
+      form.ok
+        ? ''
+        : `<label class="check confirm-ok"><input type="checkbox" id="c-ok"> <span>Autorizo a ${esc(data.restaurantName)} a tratar mis datos para gestionar y entregar este pedido, según la <a href="/privacidad" target="_blank">política de tratamiento de datos</a>. <span class="req">*</span></span></label>`
+    }
     <div class="confirm-actions">
       <button class="btn btn-primary btn-lg btn-block" type="button" id="send-order">Confirmar pedido · ${money(sum.total)}</button>
       <button class="btn btn-soft btn-block" type="button" id="co-back">Cambiar datos</button>
@@ -1197,24 +1329,52 @@ function stepConfirm(errorMsg = '') {
   qs('#co-back')?.addEventListener('click', () => stepData());
 }
 
+/* ---------- Id del intento (D58) ----------
+   Un uuid por pedido: si la conexión se corta después de que el servidor lo recibió, el reintento manda
+   el mismo id y el servidor devuelve ese pedido (no crea otro). Cambia si cambian el carrito, los datos,
+   el cupón o el modo, y se descarta al confirmar. Vive en la sesión para sobrevivir a una recarga. */
+const ATTEMPT_KEY = `${data.restaurant}:intento`;
+let memoryAttempt: Attempt | null = null;
+function loadAttempt(): Attempt | null {
+  try {
+    return readAttempt(JSON.parse(sessionStorage.getItem(ATTEMPT_KEY) ?? 'null'));
+  } catch {
+    return null;
+  }
+}
+function saveAttempt(attempt: Attempt | null) {
+  try {
+    if (attempt) sessionStorage.setItem(ATTEMPT_KEY, JSON.stringify(attempt));
+    else sessionStorage.removeItem(ATTEMPT_KEY);
+  } catch {
+    /* sin sesión: el intento vive en memoria */
+  }
+  memoryAttempt = attempt;
+}
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 let sending = false;
 async function placeOrder() {
   if (sending) return;
+  const consent = qs<HTMLInputElement>('#c-ok');
+  if (consent) form.ok = consent.checked;
+  if (!form.ok) {
+    toast('Necesitamos tu autorización de datos para entregar el pedido');
+    consent?.focus();
+    return;
+  }
   sending = true;
   const btn = qs<HTMLButtonElement>('#send-order');
   if (btn) btn.disabled = true;
+  const checkoutMs = boundedMs(Date.now() - checkoutOpenedAt);
   try {
+    // Tiempo mínimo antirobots del servidor (4 s desde la carga): repetir + exprés puede ser más rápido.
+    const wait = antiBotWait(startedAt, Date.now());
+    if (wait > 0) await sleep(wait);
     const turnstile = await turnstileToken('pedido', btn);
     if (turnstile === null) return stepConfirm(turnstileFail());
     if (btn) btn.textContent = 'Enviando…';
-    const { status, body } = await callFunction<{
-      ok: boolean;
-      code?: string;
-      token?: string;
-      total?: number;
-      error?: PedidoError;
-      message?: string;
-    }>('crear-pedido', {
+    const order = {
       restaurant: data.restaurant,
       fulfillment: pickup() ? 'recoger' : 'domicilio',
       customer: pickup()
@@ -1233,12 +1393,36 @@ async function placeOrder() {
       items: orderItems(cart),
       acepta_datos: form.ok,
       promos: form.promos,
-      elapsed_ms: Math.min(Date.now() - startedAt, 86_400_000), // tope del esquema del servidor
+    };
+    const attempt = attemptFor(loadAttempt() ?? memoryAttempt, attemptSignature(order), () =>
+      crypto.randomUUID(),
+    );
+    saveAttempt(attempt);
+    const fillMs = dataWatch.total(Date.now());
+    const { status, body } = await callFunction<{
+      ok: boolean;
+      code?: string;
+      token?: string;
+      total?: number;
+      error?: PedidoError;
+      message?: string;
+      resumes_at?: string;
+    }>('crear-pedido', {
+      ...order,
+      request_id: attempt.id,
+      ...(fillMs !== null ? { fill_ms: fillMs } : {}), // sin pasar por Datos (exprés) no se manda
+      checkout_ms: checkoutMs,
+      elapsed_ms: boundedMs(Date.now() - startedAt), // tope del esquema del servidor
       turnstile,
       sitio_web: qs<HTMLInputElement>('#f-hp')?.value ?? '',
     });
     if (!body.ok || !body.code || !body.token) {
       const reason = body.error ?? 'error';
+      if (reason === 'cerrado') {
+        // D61: pausa del equipo (con hora) o cerrado; el carrito lo mostrará igual.
+        data.acceptingOrders = false;
+        setPause(body.resumes_at ?? null);
+      }
       if (reason === 'agotado') await refreshAvailability();
       if (reason === 'recoger') {
         await refreshOrdering();
@@ -1254,18 +1438,21 @@ async function placeOrder() {
       return;
     }
     const sentPickup = pickup();
-    const order: RememberedOrder = { code: body.code, token: body.token, at: Date.now() };
-    store.set('pedidos', rememberOrder(store.get<RememberedOrder[]>('pedidos', []), order));
+    const placed: RememberedOrder = { code: body.code, token: body.token, at: Date.now() };
+    store.set('pedidos', rememberOrder(store.get<RememberedOrder[]>('pedidos', []), placed));
+    store.set(LAST_ORDER, snapshotOrder(cart, placed.at)); // D63: para "Repetir mi último pedido"
+    saveAttempt(null); // el próximo pedido es otro intento
+    syncRepeat();
     cart = [];
     coupon = null;
     couponCode = '';
     saveCart();
-    const link = trackPath(order.code, order.token);
+    const link = trackPath(placed.code, placed.token);
     const done = qs('#co-body');
     if (done)
       done.innerHTML = `<div class="done">
         <p class="eyebrow">Pedido recibido</p>
-        <p class="code">${esc(order.code)}</p>
+        <p class="code">${esc(placed.code)}</p>
         <p class="muted">Ya le llegó al parrillero. Total ${money(body.total ?? 0)} · ${sentPickup ? `recoges en ${esc(data.storeAddress)}` : `entrega estimada ${esc(data.deliveryEta)}`}. Síguelo en vivo con tu enlace único; también lo verás en esta página mientras esté activo.</p>
         <a class="btn btn-primary btn-lg btn-block" href="${esc(link)}">Seguir mi pedido</a>
         <button class="btn btn-soft btn-block" type="button" id="copy-track">Copiar enlace de seguimiento</button>
@@ -1476,6 +1663,9 @@ function showWelcome() {
     hasEvent: Boolean(data.introEvent),
     lastSeen,
     today,
+    // D62: fuera de sus fechas no se muestra aunque el sitio no se haya vuelto a publicar.
+    startsOn: data.introEvent?.startsOn,
+    endsOn: data.introEvent?.endsOn,
   });
   if (mode === 'ninguna') return;
   const markSeen = () => {
@@ -1583,7 +1773,9 @@ function showPopup(markSeen: () => void) {
       return fail(
         body.error === 'ya_registrado'
           ? 'Este celular ya recibió su cupón de bienvenida.'
-          : 'No pudimos generar tu cupón. Inténtalo de nuevo.',
+          : body.error === 'vencido'
+            ? 'Esta promoción ya terminó.'
+            : 'No pudimos generar tu cupón. Inténtalo de nuevo.',
       );
     }
     const code = body.coupon;
@@ -1686,6 +1878,7 @@ qs('#quote-form')?.addEventListener('submit', async (event) => {
 
 updateHero(true);
 syncCount();
+syncRepeat();
 void refreshAvailability();
 void renderTracker();
 showWelcome();

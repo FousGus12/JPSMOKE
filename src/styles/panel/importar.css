@@ -1,0 +1,127 @@
+/* JP Smoke · panel · ventas de Rappi y DiDi (D64). Solo clases: la CSP prohíbe atributos style. */
+
+.ventas-tabs {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.imp {
+  display: grid;
+  gap: 16px;
+}
+.imp .card-head {
+  margin-bottom: 0;
+}
+.imp-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 16px;
+}
+.imp-file {
+  flex: 1;
+  min-width: 220px;
+}
+.imp-file input {
+  max-width: 100%;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.imp-title {
+  font-size: 14px;
+  margin: 0;
+}
+.imp-map {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 14px;
+}
+.imp-preview {
+  display: grid;
+  gap: 12px;
+}
+.imp-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.imp-counts li {
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  font-size: 13px;
+  color: var(--text-2);
+}
+.imp-counts b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.imp-counts .imp-bad b {
+  color: var(--danger);
+}
+.imp-small {
+  margin: 0;
+  font-size: 12px;
+}
+.imp-errors summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-text);
+}
+.imp-errors ul,
+.imp-result ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--text-2);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.imp-sample {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.imp-sample th,
+.imp-sample td {
+  padding: 8px 12px;
+}
+.imp-sample tr:first-child th {
+  border-top: 0;
+}
+.imp-name {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 860px) {
+  .imp-map {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .imp-map {
+    grid-template-columns: 1fr;
+  }
+  .imp-step {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .imp .btn-primary {
+    width: 100%;
+  }
+}
+
+/* El texto solo para lectores (.sr-only, absoluto) se ubicaba respecto a la página y la ensanchaba en celular:
+   con el contenedor posicionado queda dentro del desplazamiento de la tabla. */
+.imp-lots {
+  position: relative;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { recentOrders, rememberOrder, stepIndex, stepName, trackPath } from './tracking';
+import { cancelText, recentOrders, rememberOrder, stepIndex, stepName, trackPath } from './tracking';
 
 describe('seguimiento', () => {
   it('arma el enlace único', () => expect(trackPath('JP-0001', 'a/b')).toBe('/pedido?c=JP-0001&t=a%2Fb'));
@@ -33,5 +33,15 @@ describe('stepName', () => {
     expect(stepName('entregado', 'recoger')).toBe('Recogido');
     expect(stepName('en_cocina', 'recoger')).toBe('En el barril');
     expect(stepName('cancelado', 'recoger')).toBe('Cancelado');
+  });
+});
+
+describe('cancelText (D59)', () => {
+  it('usa el motivo público si existe', () => {
+    expect(cancelText('  Se nos acabó   la carne ')).toBe('Se nos acabó la carne');
+  });
+  it('sin motivo, el texto genérico', () => {
+    for (const note of [null, undefined, '', '   '])
+      expect(cancelText(note)).toBe('Tu pedido fue cancelado. Si tienes dudas, escríbenos por WhatsApp.');
   });
 });

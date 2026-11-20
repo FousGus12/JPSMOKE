@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { buildReceipt, wrapText, type Receipt } from '../core/receipt';
+import {
+  buildKitchenTicket,
+  buildReceipt,
+  wrapText,
+  type KitchenTicket,
+  type Receipt,
+} from '../core/receipt';
+import { LOGO_VIEWBOX, logoShapes, logoSvgMarkup } from '../lib/logo';
 import type { PanelOrder } from './data';
 import { Modal, useToast } from './ui';
 
@@ -22,19 +29,37 @@ function readSize(): PaperSize {
   return 't80';
 }
 
-/** Duplicado a propósito de src/components/Logo.astro (no se puede importar un .astro en React): todo en negro puro para térmica. */
+type DocKind = 'recibo' | 'comanda' | 'ambos';
+const DOCS: Array<[DocKind, string]> = [
+  ['recibo', 'Recibo'],
+  ['comanda', 'Comanda'],
+  ['ambos', 'Ambos'],
+];
+const DOC_KEY = 'jp-recibo-documento';
+
+function readDoc(): DocKind {
+  try {
+    const saved = localStorage.getItem(DOC_KEY);
+    if (saved === 'recibo' || saved === 'comanda' || saved === 'ambos') return saved;
+  } catch {
+    // sin almacenamiento: recibo
+  }
+  return 'recibo';
+}
+
+/** Trazos de src/lib/logo.ts, todo en negro puro para térmica. */
 function LogoMark() {
   return (
-    <svg className="recibo-logo" viewBox="0 0 40 40" aria-hidden="true">
-      <rect x="7" y="9" width="26" height="26" rx="6" fill="none" stroke="#000" strokeWidth="2.4" />
-      <path d="M7 17h26M7 27h26" stroke="#000" strokeWidth="2.4" />
-      <path
-        d="M15 7c0-3 3-3 3-6M21 7c0-3 3-3 3-6"
-        fill="none"
-        stroke="#000"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-      />
+    <svg className="recibo-logo" viewBox={LOGO_VIEWBOX} aria-hidden="true">
+      {logoShapes('#000', '#000').map(({ tag, attrs }, index) => {
+        const props = Object.fromEntries(
+          Object.entries(attrs).map(([key, value]) => [
+            key.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase()),
+            value,
+          ]),
+        );
+        return tag === 'rect' ? <rect key={index} {...props} /> : <path key={index} {...props} />;
+      })}
     </svg>
   );
 }
@@ -65,6 +90,125 @@ export function Recibo({
   );
 }
 
+function ReceiptPaper({ receipt }: { receipt: Receipt }) {
+  return (
+    <article className="recibo-paper recibo-doc" aria-label={`Recibo ${receipt.code}`}>
+      {receipt.voided && <div className="recibo-stamp">ANULADO</div>}
+      <header className="recibo-head">
+        <LogoMark />
+        <h3>{receipt.business.name}</h3>
+        {receipt.business.address && <p>{receipt.business.address}</p>}
+        {receipt.business.phone && <p>Tel. {receipt.business.phone}</p>}
+      </header>
+      <dl className="recibo-meta">
+        <div>
+          <dt>Pedido</dt>
+          <dd className="recibo-code">{receipt.code}</dd>
+        </div>
+        <div>
+          <dt>Fecha</dt>
+          <dd>{receipt.dateText}</dd>
+        </div>
+        <div>
+          <dt>Canal</dt>
+          <dd>{receipt.channel}</dd>
+        </div>
+        <div>
+          <dt>Cliente</dt>
+          <dd>{receipt.customer}</dd>
+        </div>
+        {receipt.phone && (
+          <div>
+            <dt>Celular</dt>
+            <dd>{receipt.phone}</dd>
+          </div>
+        )}
+        {receipt.delivery.pickup ? (
+          <div>
+            <dt>Entrega</dt>
+            <dd>Recoge en tienda</dd>
+          </div>
+        ) : (
+          <>
+            <div>
+              <dt>Dirección</dt>
+              <dd>{receipt.delivery.address}</dd>
+            </div>
+            {receipt.delivery.barrio && (
+              <div>
+                <dt>Barrio</dt>
+                <dd>{receipt.delivery.barrio}</dd>
+              </div>
+            )}
+          </>
+        )}
+      </dl>
+      <ul className="recibo-items">
+        {receipt.items.map((item, index) => (
+          <li key={index} className={item.addon ? 'recibo-addon' : undefined}>
+            <span>
+              {item.addon ? '+ ' : `${item.qty} × `}
+              {item.addon && item.qty > 1 ? `${item.qty} × ` : ''}
+              {item.name}
+            </span>
+            <span>{item.amount}</span>
+          </li>
+        ))}
+      </ul>
+      <dl className="recibo-totals">
+        {receipt.totals.map((row) => (
+          <div key={row.label} className={row.strong ? 'recibo-total' : undefined}>
+            <dt>{row.label}</dt>
+            <dd>{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {receipt.payment.length > 0 && (
+        <dl className="recibo-totals recibo-pay">
+          {receipt.payment.map((row) => (
+            <div key={row.label}>
+              <dt>{row.label}</dt>
+              <dd>{row.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {receipt.gift && <p className="recibo-note">Regalo: {receipt.gift}</p>}
+      {receipt.notes && <p className="recibo-note">Nota: {receipt.notes}</p>}
+      <footer className="recibo-foot">
+        <p className="recibo-thanks">{receipt.thanks}</p>
+        <p className="recibo-legal">{receipt.legal}</p>
+      </footer>
+    </article>
+  );
+}
+
+function KitchenPaper({ ticket }: { ticket: KitchenTicket }) {
+  return (
+    <article className="recibo-paper recibo-doc recibo-kitchen" aria-label={`Comanda ${ticket.code}`}>
+      {ticket.voided && <div className="recibo-stamp">ANULADO</div>}
+      <header className="recibo-kitchen-head">
+        <p className="recibo-kitchen-kind">Comanda</p>
+        <p className="recibo-kitchen-code">{ticket.code}</p>
+        <p>{ticket.timeText}</p>
+        <p className="recibo-kitchen-delivery">{ticket.delivery}</p>
+      </header>
+      <ul className="recibo-items recibo-kitchen-items">
+        {ticket.items.map((item, index) => (
+          <li key={index} className={item.addon ? 'recibo-addon' : undefined}>
+            <span>
+              {item.addon ? '+ ' : ''}
+              {item.qty} × {item.name}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {ticket.gift && <p className="recibo-kitchen-note">Regalo: {ticket.gift}</p>}
+      {ticket.notes && <p className="recibo-kitchen-note">Nota: {ticket.notes}</p>}
+    </article>
+  );
+}
+
 function ReciboBody({
   order,
   business,
@@ -74,8 +218,12 @@ function ReciboBody({
 }) {
   const toast = useToast();
   const [size, setSize] = useState<PaperSize>(readSize);
+  const [doc, setDoc] = useState<DocKind>(readDoc);
   const [busy, setBusy] = useState(false);
   const receipt = buildReceipt(order, business);
+  const ticket = buildKitchenTicket(order);
+  const showReceipt = doc !== 'comanda';
+  const showTicket = doc !== 'recibo';
 
   useEffect(() => {
     try {
@@ -85,20 +233,44 @@ function ReciboBody({
     }
   }, [size]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(DOC_KEY, doc);
+    } catch {
+      // no pasa nada si no se puede recordar
+    }
+  }, [doc]);
+
   async function share() {
     setBusy(true);
     try {
-      const blob = await renderPng(receipt);
-      const file = new File([blob], `recibo-${receipt.code}.png`, { type: 'image/png' });
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: `Recibo ${receipt.code}` });
+      const files: File[] = [];
+      if (showReceipt)
+        files.push(
+          new File([await renderPng(receiptSvg(receipt))], `recibo-${receipt.code}.png`, {
+            type: 'image/png',
+          }),
+        );
+      if (showTicket)
+        files.push(
+          new File([await renderPng(kitchenSvg(ticket))], `comanda-${receipt.code}.png`, {
+            type: 'image/png',
+          }),
+        );
+      if (navigator.canShare?.({ files })) {
+        await navigator.share({
+          files,
+          title: `${DOCS.find(([value]) => value === doc)?.[1]} ${receipt.code}`,
+        });
       } else {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = file.name;
-        link.click();
-        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+        for (const file of files) {
+          const url = URL.createObjectURL(file);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = file.name;
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 10_000);
+        }
       }
     } catch (error) {
       if ((error as Error)?.name !== 'AbortError')
@@ -111,6 +283,13 @@ function ReciboBody({
   return (
     <div className={`recibo recibo-${size}`}>
       <div className="recibo-tools">
+        <div className="seg" role="group" aria-label="Documento">
+          {DOCS.map(([value, label]) => (
+            <button key={value} type="button" aria-pressed={doc === value} onClick={() => setDoc(value)}>
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="seg" role="group" aria-label="Tamaño del papel">
           {SIZES.map(([value, label]) => (
             <button key={value} type="button" aria-pressed={size === value} onClick={() => setSize(value)}>
@@ -127,99 +306,16 @@ function ReciboBody({
           </button>
         </div>
         <p className="recibo-hint">Para PDF elige “Guardar como PDF” al imprimir.</p>
-        <p className="recibo-hint">
-          La imagen incluye nombre y dirección del cliente; compártela solo con quien la necesite.
-        </p>
+        {showReceipt && (
+          <p className="recibo-hint">
+            La imagen del recibo incluye nombre y dirección del cliente; compártela solo con quien la
+            necesite.
+          </p>
+        )}
       </div>
       <div className="recibo-frame">
-        <article className="recibo-paper" aria-label={`Recibo ${receipt.code}`}>
-          {receipt.voided && <div className="recibo-stamp">ANULADO</div>}
-          <header className="recibo-head">
-            <LogoMark />
-            <h3>{receipt.business.name}</h3>
-            {receipt.business.address && <p>{receipt.business.address}</p>}
-            {receipt.business.phone && <p>Tel. {receipt.business.phone}</p>}
-          </header>
-          <dl className="recibo-meta">
-            <div>
-              <dt>Pedido</dt>
-              <dd className="recibo-code">{receipt.code}</dd>
-            </div>
-            <div>
-              <dt>Fecha</dt>
-              <dd>{receipt.dateText}</dd>
-            </div>
-            <div>
-              <dt>Canal</dt>
-              <dd>{receipt.channel}</dd>
-            </div>
-            <div>
-              <dt>Cliente</dt>
-              <dd>{receipt.customer}</dd>
-            </div>
-            {receipt.phone && (
-              <div>
-                <dt>Celular</dt>
-                <dd>{receipt.phone}</dd>
-              </div>
-            )}
-            {receipt.delivery.pickup ? (
-              <div>
-                <dt>Entrega</dt>
-                <dd>Recoge en tienda</dd>
-              </div>
-            ) : (
-              <>
-                <div>
-                  <dt>Dirección</dt>
-                  <dd>{receipt.delivery.address}</dd>
-                </div>
-                {receipt.delivery.barrio && (
-                  <div>
-                    <dt>Barrio</dt>
-                    <dd>{receipt.delivery.barrio}</dd>
-                  </div>
-                )}
-              </>
-            )}
-          </dl>
-          <ul className="recibo-items">
-            {receipt.items.map((item, index) => (
-              <li key={index} className={item.addon ? 'recibo-addon' : undefined}>
-                <span>
-                  {item.addon ? '+ ' : `${item.qty} × `}
-                  {item.addon && item.qty > 1 ? `${item.qty} × ` : ''}
-                  {item.name}
-                </span>
-                <span>{item.amount}</span>
-              </li>
-            ))}
-          </ul>
-          <dl className="recibo-totals">
-            {receipt.totals.map((row) => (
-              <div key={row.label} className={row.strong ? 'recibo-total' : undefined}>
-                <dt>{row.label}</dt>
-                <dd>{row.value}</dd>
-              </div>
-            ))}
-          </dl>
-          {receipt.payment.length > 0 && (
-            <dl className="recibo-totals recibo-pay">
-              {receipt.payment.map((row) => (
-                <div key={row.label}>
-                  <dt>{row.label}</dt>
-                  <dd>{row.value}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
-          {receipt.gift && <p className="recibo-note">Regalo: {receipt.gift}</p>}
-          {receipt.notes && <p className="recibo-note">Nota: {receipt.notes}</p>}
-          <footer className="recibo-foot">
-            <p className="recibo-thanks">{receipt.thanks}</p>
-            <p className="recibo-legal">{receipt.legal}</p>
-          </footer>
-        </article>
+        {showReceipt && <ReceiptPaper receipt={receipt} />}
+        {showTicket && <KitchenPaper ticket={ticket} />}
       </div>
     </div>
   );
@@ -268,7 +364,7 @@ function receiptSvg(receipt: Receipt): { svg: string; height: number } {
 
   // Logo
   out.push(
-    `<g transform="translate(${WIDTH / 2 - 24} ${y}) scale(1.2)"><rect x="7" y="9" width="26" height="26" rx="6" fill="none" stroke="#000" stroke-width="2.4"/><path d="M7 17h26M7 27h26" stroke="#000" stroke-width="2.4"/><path d="M15 7c0-3 3-3 3-6M21 7c0-3 3-3 3-6" fill="none" stroke="#000" stroke-width="2.4" stroke-linecap="round"/></g>`,
+    `<g transform="translate(${WIDTH / 2 - 24} ${y}) scale(1.2)">${logoSvgMarkup('#000', '#000')}</g>`,
   );
   y += 58;
   y += 22;
@@ -327,8 +423,58 @@ function receiptSvg(receipt: Receipt): { svg: string; height: number } {
   return { svg, height };
 }
 
-async function renderPng(receipt: Receipt): Promise<Blob> {
-  const { svg, height } = receiptSvg(receipt);
+function kitchenSvg(ticket: KitchenTicket): { svg: string; height: number } {
+  const out: string[] = [];
+  let y = 24;
+  const text = (value: string, x: number, size: number, bold = false, anchor = 'start') =>
+    out.push(
+      `<text x="${x}" y="${y}" font-family="${FONT}" font-size="${size}" font-weight="${bold ? 700 : 400}" text-anchor="${anchor}" fill="#000">${esc(value)}</text>`,
+    );
+  y += 14;
+  text('COMANDA', WIDTH / 2, 16, true, 'middle');
+  y += 44;
+  text(ticket.code, WIDTH / 2, 42, true, 'middle');
+  y += 26;
+  text(ticket.timeText.replace(/\u00a0/g, ' '), WIDTH / 2, 18, false, 'middle');
+  y += 28;
+  text(ticket.delivery, WIDTH / 2, 22, true, 'middle');
+  y += 16;
+  out.push(
+    `<line x1="${PAD}" y1="${y}" x2="${WIDTH - PAD}" y2="${y}" stroke="#000" stroke-width="1" stroke-dasharray="4 3"/>`,
+  );
+  y += 12;
+  for (const item of ticket.items) {
+    const indent = item.addon ? PAD + 18 : PAD;
+    const size = item.addon ? 18 : 22;
+    wrapText(`${item.addon ? '+ ' : ''}${item.qty} × ${item.name}`, item.addon ? 24 : 20).forEach(
+      (line, index) => {
+        y += size + 8;
+        text(index === 0 ? line : `   ${line}`, indent, size, !item.addon);
+      },
+    );
+  }
+  for (const note of [ticket.gift && `Regalo: ${ticket.gift}`, ticket.notes && `Nota: ${ticket.notes}`]) {
+    if (!note) continue;
+    y += 14;
+    for (const line of wrapText(note, 22)) {
+      y += 30;
+      text(line, PAD, 24, true);
+    }
+  }
+  y += 24;
+  const height = y;
+  if (ticket.voided) {
+    out.push(
+      `<g transform="translate(${WIDTH / 2} ${height / 2}) rotate(-18)"><rect x="-90" y="-28" width="180" height="56" rx="8" fill="#fff" fill-opacity="0.85" stroke="#000" stroke-width="4"/><text x="0" y="12" font-family="${FONT}" font-size="34" font-weight="700" text-anchor="middle" fill="#000">ANULADO</text></g>`,
+    );
+  }
+  return {
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${height}" viewBox="0 0 ${WIDTH} ${height}"><rect width="100%" height="100%" fill="#fff"/>${out.join('')}</svg>`,
+    height,
+  };
+}
+
+async function renderPng({ svg, height }: { svg: string; height: number }): Promise<Blob> {
   const image = new Image();
   image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   await image.decode();

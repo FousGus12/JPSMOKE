@@ -12,11 +12,20 @@ import {
   type ReactNode,
 } from 'react';
 import { formatCop as money } from '../core/money';
+import { isNewVersion } from '../core/version';
 import { CHANNEL_LABEL, formatPhone } from '../core/orders';
 import { currentStep, onAuthChange, signOut, type AuthStep, type Staff } from './auth';
 import { loadOrders, loadSummary, watchOrders, type PanelOrder, type Summary } from './data';
 import { ChangeTemp, Credentials, Enroll, Verify } from './Login';
 import { ManualOrder } from './ManualOrder';
+import {
+  PAUSE_OPTIONS,
+  activePause,
+  formatClock,
+  loadPausedUntil,
+  minutesLeft,
+  pauseOrders,
+} from './ordering-data';
 import { Pedidos } from './Pedidos';
 import { Resumen } from './Resumen';
 import { ToastProvider, beep, notify, useToast } from './ui';
@@ -33,6 +42,7 @@ type View =
   | 'promos'
   | 'eventos'
   | 'bienvenida'
+  | 'resenas'
   | 'equipo'
   | 'clientes'
   | 'ajustes'
@@ -54,6 +64,7 @@ const GROUPS: Array<{ id: GroupId; label: string; items: Array<{ view: View; ico
       { view: 'promos', icon: '🎟️' },
       { view: 'eventos', icon: '📣' },
       { view: 'bienvenida', icon: '👋' },
+      { view: 'resenas', icon: '⭐' },
     ],
   },
   {
@@ -78,6 +89,7 @@ const TITLES: Record<View, string> = {
   promos: 'Promociones y cupones',
   eventos: 'Eventos y banners',
   bienvenida: 'Bienvenida',
+  resenas: 'Reseñas',
   equipo: 'Equipo y permisos',
   clientes: 'Clientes',
   ajustes: 'Ajustes',
@@ -113,6 +125,7 @@ const VIEWS = {
   promos: makeView(() => import('./Promociones').then((mod) => ({ default: mod.Promociones }))),
   eventos: makeView(() => import('./Eventos').then((mod) => ({ default: mod.Eventos }))),
   bienvenida: makeView(() => import('./Eventos').then((mod) => ({ default: mod.Bienvenida }))),
+  resenas: makeView(() => import('./Resenas').then((mod) => ({ default: mod.Resenas }))),
   equipo: makeView(() => import('./Equipo').then((mod) => ({ default: mod.Equipo }))),
   clientes: makeView(() => import('./Clientes').then((mod) => ({ default: mod.Clientes }))),
   ajustes: makeView(() => import('./Ajustes').then((mod) => ({ default: mod.Ajustes }))),
@@ -208,6 +221,126 @@ function Gate() {
   if (step.kind === 'inscribir_totp') return <Enroll onDone={refresh} />;
   if (step.kind === 'verificar_totp') return <Verify factorId={step.factorId} onDone={refresh} />;
   return <Shell staff={step.staff} />;
+}
+
+// Pausar pedidos (D61): cualquier miembro del equipo; la base la reabre sola. Hora en America/Bogota.
+function PauseControl({ restaurantId }: { restaurantId: string }) {
+  const toast = useToast();
+  const [until, setUntil] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+
+  const refresh = useCallback(() => {
+    loadPausedUntil(restaurantId)
+      .then((value) => {
+        setUntil(value);
+        setNow(Date.now());
+      })
+      .catch(() => undefined);
+  }, [restaurantId]);
+  // Otra persona del equipo también puede pausar: se relee cada minuto y al volver a la pestaña.
+  useEffect(() => {
+    refresh();
+    const timer = setInterval(() => {
+      if (!document.hidden) refresh();
+    }, 60_000);
+    const onVisible = () => {
+      if (!document.hidden) refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [refresh]);
+  useEffect(() => {
+    if (until === null) return;
+    const timer = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(timer);
+  }, [until]);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => event.key === 'Escape' && setOpen(false);
+    const onDown = (event: PointerEvent) => {
+      if (box.current && !box.current.contains(event.target as Node)) setOpen(false);
+    };
+    addEventListener('keydown', onKey);
+    addEventListener('pointerdown', onDown);
+    return () => {
+      removeEventListener('keydown', onKey);
+      removeEventListener('pointerdown', onDown);
+    };
+  }, [open]);
+
+  async function change(minutes: number) {
+    if (busy) return;
+    setBusy(true);
+    setOpen(false);
+    try {
+      const value = await pauseOrders(minutes);
+      setUntil(value);
+      setNow(Date.now());
+      toast(
+        value && minutes > 0 ? `Pedidos pausados hasta las ${formatClock(value)}.` : 'Pedidos reanudados.',
+      );
+    } catch (failure) {
+      toast(failure instanceof Error ? failure.message : 'No se pudo cambiar la pausa.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const resumes = activePause(until, now);
+  return (
+    <div className="pause" ref={box}>
+      {resumes !== null ? (
+        <>
+          <span className="pause-state" role="status">
+            ⏸ <span className="pause-long">Pausado · vuelve a las </span>
+            <span className="pause-short">Hasta las </span>
+            {formatClock(resumes)}
+            <span className="pause-long"> ({minutesLeft(resumes, now)} min)</span>
+          </span>
+          <button
+            className="btn btn-soft btn-sm"
+            type="button"
+            disabled={busy}
+            onClick={() => void change(0)}
+          >
+            Reanudar
+          </button>
+        </>
+      ) : (
+        <button
+          className="btn btn-soft btn-sm"
+          type="button"
+          aria-expanded={open}
+          aria-haspopup="true"
+          aria-label="Pausar pedidos"
+          disabled={busy}
+          onClick={() => setOpen((value) => !value)}
+        >
+          ⏸<span className="pause-long"> Pausar pedidos</span>
+        </button>
+      )}
+      {open ? (
+        <div className="pause-menu" role="group" aria-label="Pausar pedidos por">
+          {PAUSE_OPTIONS.map((minutes) => (
+            <button
+              key={minutes}
+              className="btn btn-soft btn-sm"
+              type="button"
+              onClick={() => void change(minutes)}
+            >
+              {minutes} min
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function Shell({ staff }: { staff: Staff }) {
@@ -337,6 +470,31 @@ function Shell({ staff }: { staff: Staff }) {
     const onPreloadError = () => setNewVersion(true);
     addEventListener('vite:preloadError', onPreloadError);
     return () => removeEventListener('vite:preloadError', onPreloadError);
+  }, []);
+
+  // D67: sondeo de /version.json cada 10 min y al volver a la pestaña. Un fallo de red no avisa nada.
+  useEffect(() => {
+    const mine = import.meta.env.PUBLIC_BUILD_ID as string | undefined;
+    let last = 0;
+    let stopped = false;
+    const check = () => {
+      if (stopped || document.hidden || Date.now() - last < 60_000) return;
+      last = Date.now();
+      fetch('/version.json', { cache: 'no-store' })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((json: unknown) => {
+          if (!stopped && isNewVersion(mine, json)) setNewVersion(true);
+        })
+        .catch(() => undefined);
+    };
+    const timer = setInterval(check, 10 * 60_000);
+    const onVisible = () => check();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, []);
 
   useEffect(() => {
@@ -514,6 +672,7 @@ function Shell({ staff }: { staff: Staff }) {
           </button>
           <h1>{TITLES[view]}</h1>
           <div className="topbar-actions">
+            <PauseControl restaurantId={staff.restaurant_id} />
             <span className="live">
               <span className="dot" /> En vivo
             </span>

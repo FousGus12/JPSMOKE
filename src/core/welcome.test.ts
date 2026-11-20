@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bogotaDay, forcedWelcome, welcomeToShow } from './welcome';
+import { bogotaDay, forcedWelcome, isCurrent, welcomeToShow } from './welcome';
 
 describe('bogotaDay', () => {
   it('usa la hora de Bogotá (UTC-5)', () => {
@@ -40,4 +40,26 @@ describe('welcomeToShow', () => {
     expect(welcomeToShow({ ...base, hasEvent: false, forced: 'completa' })).toBe('ninguna'));
   it('configurado en ninguna', () =>
     expect(welcomeToShow({ ...base, configured: 'ninguna' })).toBe('ninguna'));
+});
+
+describe('vigencia (D62)', () => {
+  it('isCurrent compara días de Bogotá, inclusivo', () => {
+    expect(isCurrent('2026-11-19', '2026-11-01', '2026-11-19')).toBe(true);
+    expect(isCurrent('2026-11-20', '2026-11-01', '2026-11-19')).toBe(false);
+    expect(isCurrent('2026-10-31', '2026-11-01', '2026-11-19')).toBe(false);
+    expect(isCurrent('2026-11-19', null, undefined)).toBe(true);
+  });
+  it('una bienvenida vencida no se muestra, ni forzada', () => {
+    const base = {
+      configured: 'completa' as const,
+      hasEvent: true,
+      lastSeen: null,
+      today: '2026-12-01',
+      startsOn: '2026-11-01',
+      endsOn: '2026-11-30',
+    };
+    expect(welcomeToShow({ ...base, forced: null })).toBe('ninguna');
+    expect(welcomeToShow({ ...base, forced: 'aviso' })).toBe('ninguna');
+    expect(welcomeToShow({ ...base, today: '2026-11-30', forced: null })).toBe('completa');
+  });
 });

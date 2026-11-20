@@ -53,3 +53,16 @@
   gap: 6px;
   justify-items: start;
 }
+
+/* v0.19 · textos del aviso con cupón (D56). */
+.lead-copy {
+  margin: 12px 0 0;
+  padding: 12px;
+  border: 1px solid var(--line, currentColor);
+  border-radius: 10px;
+  min-width: 0;
+}
+.lead-copy legend {
+  padding: 0 6px;
+  font-weight: 600;
+}

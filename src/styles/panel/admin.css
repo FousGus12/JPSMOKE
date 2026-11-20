@@ -128,3 +128,24 @@
   gap: 10px;
   margin-bottom: 16px;
 }
+
+/* D65: acciones desde un pedido frenado y exportación de clientes. */
+.seg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.seg-actions .btn {
+  white-space: nowrap;
+}
+.cli-export {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+@media (max-width: 720px) {
+  .cli-export .btn {
+    width: 100%;
+    white-space: normal;
+  }
+}

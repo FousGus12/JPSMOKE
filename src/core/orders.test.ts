@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyMoves,
+  asksRestore,
+  cancelWhatsApp,
+  cancelledToday,
+  deferredConflicts,
+  publicCancelText,
+  restoreFlag,
+  undoSecondsLeft,
+  DELIVER_UNDO_MS,
   canDrag,
   canDrop,
   customerWhatsApp,
@@ -209,5 +217,99 @@ describe('tablero arrastrable (D53)', () => {
     expect(passedThreshold(3, 4)).toBe(false);
     expect(passedThreshold(6, 0)).toBe(false);
     expect(passedThreshold(5, 4)).toBe(true);
+  });
+});
+
+describe('anular con mensaje para el cliente (D59)', () => {
+  it('sin mensaje elegido no manda nada; los fijos van tal cual', () => {
+    expect(publicCancelText('', 'algo')).toBeNull();
+    expect(publicCancelText('No llegamos a tu zona', 'ignorado')).toBe('No llegamos a tu zona');
+  });
+  it('"Otro" exige texto y lo corta a 160', () => {
+    expect(publicCancelText('Otro', '  a ')).toBeUndefined();
+    expect(publicCancelText('Otro', '  Se  dañó   el barril ')).toBe('Se dañó el barril');
+    expect(publicCancelText('Otro', 'x'.repeat(300))).toHaveLength(160);
+  });
+  it('solo pregunta por insumos desde En el barril; antes siempre vuelven', () => {
+    expect(asksRestore('nuevo')).toBe(false);
+    expect(asksRestore('confirmado')).toBe(false);
+    expect(asksRestore('en_cocina')).toBe(true);
+    expect(asksRestore('en_camino')).toBe(true);
+    expect(asksRestore('entregado')).toBe(true);
+    expect(restoreFlag('confirmado', false)).toBe(true);
+    expect(restoreFlag('en_cocina', false)).toBe(false);
+    expect(restoreFlag('entregado', true)).toBe(true);
+  });
+  it('WhatsApp prellenado con código y mensaje', () => {
+    const url = cancelWhatsApp('3001234567', ' Ana  María', 'JP-0042', 'JP Smoke', 'No llegamos a tu zona');
+    expect(url.startsWith('https://wa.me/573001234567?text=')).toBe(true);
+    expect(decodeURIComponent(url.split('text=')[1] ?? '')).toBe(
+      'Hola Ana, te escribimos de JP Smoke: tu pedido JP-0042 fue cancelado. No llegamos a tu zona',
+    );
+  });
+  it('el error de conservar insumos antes del barril se explica', () => {
+    expect(
+      statusErrorText({ code: '22023', message: 'Los insumos se conservan solo desde En el barril' }),
+    ).toContain('aún no entra al barril');
+  });
+});
+
+describe('deshacer entregado (D60)', () => {
+  it('cuenta regresiva en segundos enteros', () => {
+    expect(DELIVER_UNDO_MS).toBe(10_000);
+    expect(undoSecondsLeft(NOW + 10_000, NOW)).toBe(10);
+    expect(undoSecondsLeft(NOW + 9_001, NOW)).toBe(10);
+    expect(undoSecondsLeft(NOW + 1, NOW)).toBe(1);
+    expect(undoSecondsLeft(NOW - 500, NOW)).toBe(0);
+  });
+  it('detecta pedidos que cambió otro dispositivo o que ya no están', () => {
+    const deferred = new Map<string, { from: OrderStatus }>([
+      ['a', { from: 'en_camino' }],
+      ['b', { from: 'en_camino' }],
+      ['c', { from: 'nuevo' }],
+    ]);
+    const orders = [
+      { id: 'a', status: 'en_camino' as OrderStatus },
+      { id: 'b', status: 'cancelado' as OrderStatus },
+    ];
+    expect(deferredConflicts(orders, deferred)).toEqual(['b', 'c']);
+  });
+});
+
+describe('cancelados de hoy (D60)', () => {
+  const ev = (status: OrderStatus, at: string, by_user: string | null = null) => ({ status, at, by_user });
+  it('usa la hora de la anulación en Bogotá, excluye prueba y ordena del más reciente', () => {
+    const orders = [
+      // Creado ayer, anulado hoy a las 9 a. m.: cuenta.
+      {
+        id: 'ayer',
+        status: 'cancelado' as OrderStatus,
+        is_test: false,
+        order_events: [ev('nuevo', '2026-10-31T22:00:00Z'), ev('cancelado', '2026-11-01T14:00:00Z', 'u1')],
+      },
+      // Anulado anoche a las 11 p. m. de Bogotá (04:00Z de hoy): no cuenta.
+      {
+        id: 'anoche',
+        status: 'cancelado' as OrderStatus,
+        order_events: [ev('cancelado', '2026-11-01T04:00:00Z')],
+      },
+      {
+        id: 'prueba',
+        status: 'cancelado' as OrderStatus,
+        is_test: true,
+        order_events: [ev('cancelado', '2026-11-01T15:00:00Z')],
+      },
+      {
+        id: 'tarde',
+        status: 'cancelado' as OrderStatus,
+        order_events: [ev('cancelado', '2026-11-01T19:00:00Z')],
+      },
+      { id: 'vivo', status: 'nuevo' as OrderStatus, order_events: [ev('nuevo', '2026-11-01T19:00:00Z')] },
+      { id: 'sin-evento', status: 'cancelado' as OrderStatus, order_events: [] },
+    ];
+    const list = cancelledToday(orders, NOW);
+    expect(list.map((row) => row.order.id)).toEqual(['tarde', 'ayer']);
+    expect(list[1]).toMatchObject({ at: '2026-11-01T14:00:00Z', byUser: 'u1' });
+    expect(list[0]?.byUser).toBeNull();
   });
 });

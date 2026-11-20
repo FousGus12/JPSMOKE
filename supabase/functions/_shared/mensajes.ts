@@ -37,3 +37,17 @@ export const mensajesPedido: Record<PedidoError, string> = {
   datos_invalidos: 'Revisa los datos e inténtalo de nuevo.',
   error: 'No pudimos tomar tu pedido. Inténtalo de nuevo en un momento.',
 };
+
+/** D61: pedidos en pausa. "Pausamos los pedidos por unos minutos. Volvemos a las 19:30." (hora de Bogotá).
+ * Sin hora válida, el mensaje de cerrado. */
+export function mensajePausa(resumesAt: string | Date | null | undefined): string {
+  const date = resumesAt ? new Date(resumesAt) : null;
+  if (!date || Number.isNaN(date.getTime())) return mensajesPedido.cerrado;
+  const hora = new Intl.DateTimeFormat('es-CO', {
+    timeZone: 'America/Bogota',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(date);
+  return `Pausamos los pedidos por unos minutos. Volvemos a las ${hora}.`;
+}

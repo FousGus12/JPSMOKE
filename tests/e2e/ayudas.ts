@@ -122,3 +122,42 @@ export async function jumpTo(page: Page, selector: string) {
 export async function openCartJs(page: Page) {
   await page.evaluate(() => (document.querySelector('[data-open-cart]') as HTMLElement).click());
 }
+
+/** Día de Bogotá (AAAA-MM-DD) de un instante. */
+const bogotaDay = (ms: number) => new Date(ms - 5 * 3_600_000).toISOString().slice(0, 10);
+
+/**
+ * La bienvenida del build solo se ve entre `starts_on` y `ends_on` (D62), aun forzada con `?intro=`.
+ * Si hoy cae fuera (el evento del tenant vence), fija el reloj del navegador a un día dentro de la ventana,
+ * dejando `marginDays` libres al final. Dentro de la ventana no toca el reloj. Devuelve el instante usado.
+ */
+export async function welcomeClock(page: Page, marginDays = 0): Promise<number> {
+  const [starts = '', ends = ''] = sql(
+    `select starts_on || '|' || ends_on from public.events where restaurant_id = '${RID}' and show_intro order by position limit 1`,
+  ).split('|');
+  const now = Date.now();
+  const last = ends ? bogotaDay(Date.parse(`${ends}T12:00:00-05:00`) - marginDays * 86_400_000) : '';
+  const today = bogotaDay(now);
+  const target = starts && today < starts ? starts : last && today > last ? last : null;
+  if (!target) return now;
+  const at = Date.parse(`${target}T12:00:00-05:00`);
+  await page.clock.setFixedTime(at);
+  return at;
+}
+
+/** Corre `body` con la bienvenida vigente también en la base (capture_lead valida fechas, D62) y la restaura. */
+export async function withWelcomeCurrent(body: () => Promise<void>) {
+  const where = `restaurant_id = '${RID}' and show_intro`;
+  const saved = sql(
+    `select id || '|' || ends_on from public.events where ${where} and ends_on < current_date`,
+  );
+  if (saved) sql(`update public.events set ends_on = current_date where ${where} and ends_on < current_date`);
+  try {
+    await body();
+  } finally {
+    for (const row of saved.split('\n').filter(Boolean)) {
+      const [id, ends] = row.split('|');
+      sql(`update public.events set ends_on = '${ends}' where id = '${id}'`);
+    }
+  }
+}

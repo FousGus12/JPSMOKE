@@ -230,8 +230,8 @@ select lives_ok($$ select public.register_blocked('v18-a', 'robot', jsonb_build_
 
 -- Regla de cierre (todas las funciones de public, no solo security definer; el 01 cubre estas).
 select is((select array_agg(p.proname::text order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-  where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute')), array['stock_status', 'track_order'],
-  'anon solo ejecuta track_order y stock_status en public');
+  where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute')), array['ordering_status', 'stock_status', 'track_order'],
+  'anon solo ejecuta track_order, stock_status y ordering_status (D61) en public');
 
 select * from finish();
 rollback;
