@@ -1,6 +1,6 @@
 # HANDOFF · JP Smoke
 
-> **Última actualización:** 2026-11-20 (v0.19: D56–D67, oleada 4) · **Roadmap:** v0.19 · **Git:** v0.19 (`df06149`) en `main` y `produccion` (PR #7); **publicada 2026-11-20**
+> **Última actualización:** 2026-11-20 (v0.19.1 publicada) · **Roadmap:** v0.19 · **Git:** `main` y `produccion` en `3705f72` (PR #6, #7, #8); 22 migraciones en remoto · Pruebas manuales de Gustavo: `docs/pruebas-gustavo-v0.19.md`
 >
 > **Para retomar en otro chat** (copiar tal cual):
 >
