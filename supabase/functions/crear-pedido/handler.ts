@@ -27,10 +27,22 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
   const { sitio_web: honeypot, turnstile, elapsed_ms: elapsed, acepta_datos: _ok, ...order } = parsed.data;
 
   const block = async (reason: 'robot' | 'repetido') => {
-    await deps.rpc('register_blocked', { p_restaurant: order.restaurant, p_reason: reason });
+    // D43: detalle mínimo para revisar el intento (la base guarda solo los últimos 4 del celular).
+    await deps.rpc('register_blocked', {
+      p_restaurant: order.restaurant,
+      p_reason: reason,
+      p_detail: {
+        name: order.customer.name,
+        phone: order.customer.phone,
+        zone_id: order.fulfillment === 'recoger' ? undefined : order.customer.zone_id,
+        items: order.items.length,
+        lines: order.items.map(({ product_id, qty }) => ({ product_id, qty })),
+      },
+    });
     return fail(reason);
   };
   if (honeypot || elapsed < deps.minFillMs) return block('robot');
+  // Primero Turnstile: el cupo por IP solo se gasta con una verificación válida (redes móviles comparten IP).
   if (!(await deps.verifyTurnstile(turnstile, ip))) return block('robot');
   const ipKey = `pedido:ip:${await hashIp(ip, deps.salt)}`;
   const { data: allowed, error: rateError } = await deps.rpc('rate_hit', {

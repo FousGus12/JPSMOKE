@@ -4,9 +4,13 @@ import Site from '../layouts/Site.astro';
 import ProductCard from '../components/site/ProductCard.astro';
 import MenuItem from '../components/site/MenuItem.astro';
 import Logo from '../components/Logo.astro';
+import Photo from '../components/site/Photo.astro';
+import { PHOTO, eventPreset } from '../lib/images';
 import { loadSiteData } from '../lib/content';
 import { formatCop } from '../core/money';
 import { restaurantJsonLd } from '../core/jsonld';
+import { asLocalities, mapGeometry, zoneForLocality } from '../core/coverage';
+import bogota from '../data/bogota-localidades.json';
 
 const site = await loadSiteData();
 const on = (key: string) => site.sections[key] !== false;
@@ -31,6 +35,15 @@ const dateFmt = new Intl.DateTimeFormat('es-CO', {
   timeZone: 'America/Bogota',
 });
 const siteUrl = Astro.site?.toString() ?? '';
+// D44: mapa SVG de las localidades (al compilar, sin CDN); el navegador actualiza las activas en vivo.
+const localities = asLocalities(bogota);
+const coverMap = mapGeometry(localities, 320);
+const activeZones = site.zones.filter((zone) => zone.active);
+const storePin =
+  site.store.open && site.store.lat !== null && site.store.lng !== null
+    ? coverMap.project(site.store.lng, site.store.lat)
+    : null;
+const byName = [...localities].sort((a, b) => a.name.localeCompare(b.name, 'es'));
 const jsonLd = [restaurantJsonLd(site, siteUrl)];
 ---
 
@@ -51,7 +64,8 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
         aria-labelledby="intro-title"
         data-mode={site.introMode}
       >
-        {intro.image && <img class="intro-bg" src={intro.image} alt="" />}
+        {/* D51: sin descarga hasta que sitio.ts decida mostrar la bienvenida. */}
+        <Photo src={intro.image} preset={PHOTO.intro} class="intro-bg" deferred />
         <div class="intro-smoke" aria-hidden="true" />
         <div class="intro-inner">
           <div class="intro-logo logo">
@@ -205,14 +219,7 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
             data-add={product.id}
             aria-label={`${product.name}, ${formatCop(product.price)}. Agregar al pedido`}
           >
-            <img
-              src={product.image}
-              alt=""
-              width="320"
-              height="400"
-              fetchpriority={i < 2 ? 'high' : 'auto'}
-              loading={i < 2 ? 'eager' : 'lazy'}
-            />
+            <Photo src={product.image} preset={PHOTO.hero} priority={i < 2} width={320} height={400} />
             <span class="hcard-label">
               <b>{product.name}</b>
               <span>{formatCop(product.price)}</span>
@@ -300,7 +307,13 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
               Todo
             </button>
             {site.categories.map((category) => (
-              <button class="pill" type="button" data-cat={category.slug} aria-pressed="false">
+              <button
+                class="pill"
+                type="button"
+                data-cat={category.slug}
+                data-addons={category.isAddons ? '1' : undefined}
+                aria-pressed="false"
+              >
                 {category.emoji} {category.name}
                 <span class="count">
                   {site.products.filter((product) => product.categoryId === category.id).length}
@@ -355,7 +368,7 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
       <div class="wrap promos">
         {site.blocks.promo.visible && (
           <div class="promo-hero reveal">
-            {site.blocks.promo.image && <img src={site.blocks.promo.image} alt="" loading="lazy" />}
+            <Photo src={site.blocks.promo.image} preset={PHOTO.promo} />
             <div class="promo-hero-in">
               {site.blocks.promo.tag && <span class="tag tag-gold">{site.blocks.promo.tag}</span>}
               <h2 class="display h-lg">{site.blocks.promo.title}</h2>
@@ -412,7 +425,7 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
         <div class="events">
           {sectionEvents.map((event) => (
             <article class="event">
-              {event.image && <img src={event.image} alt="" loading="lazy" />}
+              <Photo src={event.image} preset={eventPreset(sectionEvents.length)} />
               <div class="event-in">
                 <span class="tag tag-gold">{event.kicker}</span>
                 <h3>{event.title}</h3>
@@ -451,7 +464,7 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
         </div>
         {site.blocks.tour.image && (
           <figure class="tour-img reveal">
-            <img src={site.blocks.tour.image} alt="" loading="lazy" />
+            <Photo src={site.blocks.tour.image} preset={PHOTO.tour} />
           </figure>
         )}
       </div>
@@ -507,33 +520,96 @@ const jsonLd = [restaurantJsonLd(site, siteUrl)];
             <strong>{site.deliveryEta}</strong> de entrega promedio · pedido mínimo{' '}
             <strong>{formatCop(site.deliveryMin)}</strong>
           </p>
+          <div class="cover-check" id="cover-check" data-wa={site.whatsapp ?? ''}>
+            <p class="cover-check-title">Revisa si llegamos</p>
+            <div class="cover-check-row">
+              <button class="btn btn-primary" type="button" data-geo="cover" hidden>
+                📍 Usar mi ubicación
+              </button>
+              <label class="sr-only" for="cover-loc">
+                Elige tu localidad
+              </label>
+              <select class="select" id="cover-loc">
+                <option value="">o elige tu localidad</option>
+                {byName.map((locality) => (
+                  <option value={locality.code}>{locality.name}</option>
+                ))}
+              </select>
+            </div>
+            <p class="cover-result" id="cover-result" role="status" aria-live="polite"></p>
+            <p class="cover-privacy">
+              Tu ubicación solo se usa en tu navegador: no la guardamos ni la enviamos.
+            </p>
+          </div>
         </div>
-        <div class="zones reveal">
-          {site.zones.map((zone) => (
-            <div class:list={['zone', { off: !zone.active }]}>
-              <b>{zone.name}</b>
-              <span>{zone.active ? `Domicilio ${formatCop(zone.fee)}` : 'Pronto'}</span>
-            </div>
-          ))}
-          {site.store.open ? (
-            <div class="zone store" data-testid="punto-fisico">
-              <b>📍 {site.store.address}</b>
-              <span>
-                {site.store.hours.map(([days, time]) => `${days} ${time}`).join(' · ') ||
-                  (site.store.pickup ? 'Recoge tu pedido aquí' : 'Visítanos')}
-              </span>
-              {site.store.mapsUrl && (
-                <a href={site.store.mapsUrl} target="_blank" rel="noopener noreferrer">
-                  Cómo llegar →
-                </a>
+        <div class="cover-side reveal">
+          <figure class="cover-map">
+            <svg
+              id="cover-map"
+              viewBox={`0 0 ${coverMap.width} ${coverMap.height}`}
+              role="img"
+              aria-labelledby="cover-map-title"
+              preserveAspectRatio="xMidYMid meet"
+            >
+              <title id="cover-map-title">Mapa de las localidades de Bogotá donde llegamos</title>
+              {coverMap.paths.map((path) => (
+                <path
+                  class:list={['loc', { 'is-on': zoneForLocality(path.code, activeZones) !== null }]}
+                  d={path.d}
+                  data-loc={path.code}
+                >
+                  <title>{path.name}</title>
+                </path>
+              ))}
+              {storePin && (
+                <g class="map-pin" data-testid="mapa-punto">
+                  <circle cx={storePin[0]} cy={storePin[1]} r="9" class="map-pin-halo" />
+                  <circle cx={storePin[0]} cy={storePin[1]} r="4.5" class="map-pin-dot" />
+                </g>
               )}
-            </div>
-          ) : (
-            <div class="zone soon">
-              <b>📍 Punto físico</b>
-              <span>Próximamente</span>
-            </div>
-          )}
+            </svg>
+            <figcaption>
+              <span class="map-key">
+                <i class="key-on" aria-hidden="true"></i>Llegamos
+              </span>
+              <span class="map-key">
+                <i class="key-off" aria-hidden="true"></i>Todavía no
+              </span>
+              {storePin && (
+                <span class="map-key">
+                  <i class="key-pin" aria-hidden="true"></i>Punto físico
+                </span>
+              )}
+              <small class="map-credit">Límites: IDECA, CC BY 4.0</small>
+            </figcaption>
+          </figure>
+          <div class="zones">
+            {site.zones.map((zone) => (
+              <div class:list={['zone', { off: !zone.active }]} data-zone-id={zone.id}>
+                <b>{zone.name}</b>
+                <span>{zone.active ? `Domicilio ${formatCop(zone.fee)}` : 'Pronto'}</span>
+              </div>
+            ))}
+            {site.store.open ? (
+              <div class="zone store" data-testid="punto-fisico">
+                <b>📍 {site.store.address}</b>
+                <span>
+                  {site.store.hours.map(([days, time]) => `${days} ${time}`).join(' · ') ||
+                    (site.store.pickup ? 'Recoge tu pedido aquí' : 'Visítanos')}
+                </span>
+                {site.store.mapsUrl && (
+                  <a href={site.store.mapsUrl} target="_blank" rel="noopener noreferrer">
+                    Cómo llegar →
+                  </a>
+                )}
+              </div>
+            ) : (
+              <div class="zone soon">
+                <b>📍 Punto físico</b>
+                <span>Próximamente</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </section>

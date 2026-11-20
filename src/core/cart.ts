@@ -175,3 +175,21 @@ export function orderItems(lines: CartLine[]) {
     ...(line.parent ? { parent: line.parent } : {}),
   }));
 }
+
+/* ---------- Adiciones solo con plato (D47) ---------- */
+
+/** Hay al menos un plato (línea sin padre que no es adición). `isAddon` dice si un producto es de la categoría de adiciones. */
+export function hasDish(lines: CartLine[], isAddon: (productId: string) => boolean): boolean {
+  return lines.some((line) => !line.parent && line.qty > 0 && !isAddon(line.productId));
+}
+
+/** Sin ningún plato no quedan adiciones (ni ligadas ni aparte): el servidor rechaza el pedido (`sin_plato`). */
+export function dropAddonsWithoutDish(
+  lines: CartLine[],
+  isAddon: (productId: string) => boolean,
+): { lines: CartLine[]; removed: number } {
+  if (hasDish(lines, isAddon)) return { lines, removed: 0 };
+  const kept = lines.filter((line) => !line.parent && !isAddon(line.productId));
+  const removed = lines.filter((line) => !kept.includes(line)).reduce((sum, line) => sum + line.qty, 0);
+  return { lines: kept, removed };
+}

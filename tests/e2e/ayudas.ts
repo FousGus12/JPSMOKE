@@ -39,8 +39,86 @@ export async function loginAdmin(page: Page) {
   await expect(page.locator('.topbar')).toBeVisible({ timeout: 15_000 });
 }
 
-export async function goTo(page: Page, label: string) {
+/** Abre el menú lateral en celular (solo después de ver `.topbar`, que es cuando el botón ya responde). */
+export async function openMenu(page: Page) {
+  await expect(page.locator('.topbar')).toBeVisible({ timeout: 15_000 });
   const toggle = page.locator('#side-toggle');
   if (await toggle.isVisible()) await toggle.click();
-  await page.locator('.side-nav button', { hasText: label }).click();
+}
+
+/** Va a un apartado del menú (D41): si está dentro de un grupo desplegable, lo abre antes. */
+export async function goTo(page: Page, label: string) {
+  await openMenu(page);
+  const item = page.locator('.side-nav button', { hasText: label }).first();
+  if (!(await item.isVisible())) {
+    const id = await item.evaluate((el) => el.closest('.nav-group')?.id ?? '');
+    if (id) await page.locator(`.nav-group-head[aria-controls="${id}"]`).click();
+  }
+  await item.click();
+}
+
+export async function loginOperator(page: Page) {
+  await page.goto('/panel');
+  await page.getByLabel('Correo').fill('operador.dev@jpsmoke.test');
+  await page.getByLabel('Contraseña').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  await expect(page.locator('.topbar')).toBeVisible({ timeout: 15_000 });
+}
+
+/** Pedido "web" directo en la base (como lo deja crear-pedido). Devuelve el código; falla si la base lo rechaza. */
+export function placeOrderSql(opts: { phone: string; name: string; product?: string; qty?: number }): string {
+  const code = placeOrderResult(opts).code;
+  if (!/^JP-\d{4}$/.test(code ?? ''))
+    throw new Error(`place_order no creó el pedido: ${JSON.stringify(code)}`);
+  return code as string;
+}
+
+/** Igual, pero devuelve la respuesta de la base ({ok, code} o {ok:false, reason}); `zoneName` fuerza esa zona. */
+export function placeOrderResult(opts: {
+  phone: string;
+  name: string;
+  product?: string;
+  qty?: number;
+  zoneName?: string;
+}): { ok: boolean; code?: string; reason?: string } {
+  const { phone, name, product = 'la-clasica', qty = 1, zoneName } = opts;
+  const zone = zoneName
+    ? `(select id from public.delivery_zones where restaurant_id = '${RID}' and name = '${zoneName}')`
+    : `(select id from public.delivery_zones where restaurant_id = '${RID}' and active order by position limit 1)`;
+  return JSON.parse(
+    sql(`select public.place_order(jsonb_build_object('restaurant', 'jp-smoke', 'token', 'token-e2e-${phone}-0001',
+    'customer', jsonb_build_object('name', '${name}', 'phone', '${phone}', 'address', 'Calle 68 # 60-71', 'zone_id', ${zone}),
+    'payment_code', 'nequi', 'items', jsonb_build_array(jsonb_build_object('product_id',
+      (select id from public.products where restaurant_id = '${RID}' and slug = '${product}'), 'qty', ${qty}))))::text`),
+  );
+}
+
+/** Guarda el estado activo de las zonas y deja Chapinero encendida y Kennedy apagada (pruebas de cobertura). */
+export function snapshotZones(): string {
+  const snap = sql(
+    `select string_agg(id || ':' || active, ',') from public.delivery_zones where restaurant_id = '${RID}'`,
+  );
+  sql(
+    `update public.delivery_zones set active = (name = 'Chapinero') where restaurant_id = '${RID}' and name in ('Chapinero', 'Kennedy')`,
+  );
+  return snap;
+}
+export function restoreZones(snap: string) {
+  for (const pair of snap.split(',')) {
+    const [id, active] = pair.split(':');
+    if (id) sql(`update public.delivery_zones set active = ${active} where id = '${id}'`);
+  }
+}
+
+/** Salta al elemento sin animación (en iPhone no hay rueda y el scroll suave se cruza con las pruebas). */
+export async function jumpTo(page: Page, selector: string) {
+  await page.evaluate((target) => {
+    document.documentElement.style.scrollBehavior = 'auto';
+    document.querySelector(target)?.scrollIntoView({ behavior: 'auto', block: 'start' });
+  }, selector);
+}
+
+/** Abre el carrito por JS: el botón del encabezado se esconde al bajar y en celular lo cubre la barra inferior. */
+export async function openCartJs(page: Page) {
+  await page.evaluate(() => (document.querySelector('[data-open-cart]') as HTMLElement).click());
 }

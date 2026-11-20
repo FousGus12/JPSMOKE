@@ -74,3 +74,20 @@ export function weeklyText(report: WeeklyReport, restaurant: string): string {
   ];
   return lines.filter(Boolean).join('\n');
 }
+
+/** Entregado anulado después de cerrar la caja de su día (D42): el cierre guardado no cambia. */
+export interface VoidedAfterClose {
+  code: string;
+  total: number;
+  day: string;
+  reason: string | null;
+}
+
+/** Lista segura (la base vieja no manda el campo) y total anulado. */
+export function voidedAfterClose(list: VoidedAfterClose[] | null | undefined): {
+  rows: VoidedAfterClose[];
+  total: number;
+} {
+  const rows = Array.isArray(list) ? list : [];
+  return { rows, total: rows.reduce((sum, row) => sum + (Number(row.total) || 0), 0) };
+}

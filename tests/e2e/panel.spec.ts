@@ -116,6 +116,9 @@ test('admin: obliga a activar el código de dos pasos y luego ve ventas', async 
   await page.getByRole('button', { name: 'Activar y entrar' }).click();
   await expect(page.getByText('Ventas de hoy')).toBeVisible();
   await openSide(page);
+  // Carta vive en el grupo desplegable "Contenido" (D41): cerrado al entrar, se abre con su cabecera.
+  await expect(page.getByText('Carta y precios')).toBeHidden();
+  await page.locator('.nav-group-head', { hasText: 'Contenido' }).click();
   await expect(page.getByText('Carta y precios')).toBeVisible();
 });
 

@@ -3,6 +3,7 @@
 // La página es estática; el estado se consulta en vivo a la función seguir-pedido (nunca trae el celular).
 import Site from '../layouts/Site.astro';
 import { loadSiteData } from '../lib/content';
+import '../styles/seguimiento.css';
 
 const site = await loadSiteData();
 ---

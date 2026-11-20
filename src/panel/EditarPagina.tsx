@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { formatCop as money } from '../core/money';
 import {
+  BOGOTA_LOCALITIES,
   deletePayment,
+  isHttps,
+  parseCoordinate,
+  parseCoordinatePair,
   loadSettings,
   loadZonesAndPayments,
   publishSite,
@@ -14,12 +18,11 @@ import {
 } from './editor';
 import { useToast } from './ui';
 
-type Tab = 'textos' | 'secciones' | 'pedidos' | 'horario' | 'local';
+type Tab = 'textos' | 'secciones' | 'pedidos' | 'local';
 const TABS: Array<[Tab, string]> = [
   ['textos', 'Inicio y textos'],
-  ['secciones', 'Secciones y canales'],
+  ['secciones', 'Secciones'],
   ['pedidos', 'Domicilios y pagos'],
-  ['horario', 'Horario'],
   ['local', 'Punto físico'],
 ];
 const SECTION_LABEL: Record<string, string> = {
@@ -48,6 +51,7 @@ export function EditarPagina({ restaurantId }: { restaurantId: string }) {
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [coordsInvalid, setCoordsInvalid] = useState(false);
 
   useEffect(() => {
     loadSettings(restaurantId)
@@ -66,28 +70,17 @@ export function EditarPagina({ restaurantId }: { restaurantId: string }) {
 
   async function save() {
     if (!settings) return;
-    if (settings.whatsapp && !/^57\d{10}$/.test(settings.whatsapp))
-      return toast('WhatsApp: escribe 57 y el celular, p. ej. 573001234567');
-    for (const key of ['rappi', 'didi'] as const) {
-      const channel = settings.channels[key];
-      if (channel?.visible && !/^https:\/\//.test(channel.url))
-        return toast(`El enlace de ${key === 'rappi' ? 'Rappi' : 'DiDi'} debe empezar por https://`);
-    }
     const address = settings.store_address?.trim() || null;
     const maps = settings.store_maps_url?.trim() || null;
     if (settings.store_open && !address) return toast('Escribe la dirección del local para mostrarlo.');
-    if (maps && !/^https:\/\//.test(maps)) return toast('El enlace del mapa debe empezar por https://');
+    if (maps && !isHttps(maps)) return toast('El enlace del mapa debe empezar por https://');
+    if (coordsInvalid) return toast('Revisa las coordenadas del local antes de guardar.');
     setBusy(true);
     try {
       const {
         hero,
         sections,
-        channels,
         blocks,
-        whatsapp,
-        instagram,
-        tiktok,
-        hours,
         delivery_min,
         delivery_eta,
         accepting_orders,
@@ -97,18 +90,15 @@ export function EditarPagina({ restaurantId }: { restaurantId: string }) {
       await saveSettings(restaurantId, {
         hero,
         sections,
-        channels,
         blocks,
-        whatsapp,
-        instagram,
-        tiktok,
-        hours,
         delivery_min,
         delivery_eta,
         accepting_orders,
         store_open,
         store_address: address,
         store_maps_url: maps,
+        store_lat: settings.store_lat,
+        store_lng: settings.store_lng,
         store_hours: store_hours.filter(([days, time]) => days.trim() || time.trim()),
         // Recoger exige local abierto y dirección (la base también lo exige).
         pickup_enabled: settings.pickup_enabled && store_open && Boolean(address),
@@ -355,79 +345,6 @@ export function EditarPagina({ restaurantId }: { restaurantId: string }) {
               ))}
             </div>
           </section>
-          <section className="card">
-            <div className="card-head">
-              <div>
-                <h2>Canales y redes</h2>
-                <p>Rappi y DiDi quedan ocultos hasta que los actives (D8)</p>
-              </div>
-            </div>
-            <div className="rows">
-              {(['rappi', 'didi'] as const).map((key) => {
-                const channel = settings.channels[key] ?? { visible: false, url: '' };
-                const name = key === 'rappi' ? 'Rappi' : 'DiDi Food';
-                return (
-                  <div className="row" key={key}>
-                    <div className="grow-field">
-                      <b>{name}</b>
-                      <input
-                        className="input"
-                        aria-label={`Enlace de ${name}`}
-                        value={channel.url}
-                        placeholder="https://"
-                        onChange={(event) =>
-                          edit({
-                            channels: {
-                              ...settings.channels,
-                              [key]: { ...channel, url: event.target.value.trim() },
-                            },
-                          })
-                        }
-                      />
-                    </div>
-                    <label className="switch">
-                      <input
-                        type="checkbox"
-                        aria-label={`Mostrar ${name}`}
-                        checked={channel.visible}
-                        onChange={(event) =>
-                          edit({
-                            channels: {
-                              ...settings.channels,
-                              [key]: { ...channel, visible: event.target.checked },
-                            },
-                          })
-                        }
-                      />
-                      <span />
-                    </label>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="form">
-              <Text
-                label="WhatsApp del negocio (57 + celular)"
-                value={settings.whatsapp ?? ''}
-                max={12}
-                onChange={(whatsapp) => edit({ whatsapp: whatsapp.replace(/\D/g, '') || null })}
-              />
-              <div className="form-2">
-                <Text
-                  label="Instagram"
-                  value={settings.instagram ?? ''}
-                  max={40}
-                  onChange={(instagram) => edit({ instagram: instagram || null })}
-                />
-                <Text
-                  label="TikTok"
-                  value={settings.tiktok ?? ''}
-                  max={40}
-                  onChange={(tiktok) => edit({ tiktok: tiktok || null })}
-                />
-              </div>
-            </div>
-          </section>
         </div>
       ) : null}
 
@@ -435,54 +352,51 @@ export function EditarPagina({ restaurantId }: { restaurantId: string }) {
         <DeliveryAndPayments restaurantId={restaurantId} settings={settings} edit={edit} />
       ) : null}
 
-      {tab === 'horario' ? (
-        <section className="card">
-          <div className="card-head">
-            <div>
-              <h2>Horario de pedidos</h2>
-              <p>Se muestra en el pie de la página</p>
-            </div>
-            <button
-              className="btn btn-soft btn-sm"
-              type="button"
-              onClick={() => edit({ hours: [...settings.hours, ['', '']] })}
-            >
-              ＋ Fila
-            </button>
-          </div>
-          <div className="form">
-            {settings.hours.map(([day, time], i) => (
-              <div className="form-2" key={i}>
-                <Text
-                  label={`Días ${i + 1}`}
-                  value={day}
-                  max={40}
-                  onChange={(value) =>
-                    edit({ hours: settings.hours.map((row, index) => (index === i ? [value, row[1]] : row)) })
-                  }
-                />
-                <Text
-                  label={`Horas ${i + 1}`}
-                  value={time}
-                  max={40}
-                  onChange={(value) =>
-                    edit({ hours: settings.hours.map((row, index) => (index === i ? [row[0], value] : row)) })
-                  }
-                />
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {tab === 'local' ? <Store settings={settings} edit={edit} /> : null}
+      {tab === 'local' ? <Store settings={settings} edit={edit} onInvalid={setCoordsInvalid} /> : null}
     </>
   );
 }
 
 /** Punto físico (F10, D33): dirección y horario se ven al publicar; "Recoger en tienda" aplica al guardar. */
-function Store({ settings, edit }: { settings: SiteSettings; edit: (patch: Partial<SiteSettings>) => void }) {
+function Store({
+  settings,
+  edit,
+  onInvalid,
+}: {
+  settings: SiteSettings;
+  edit: (patch: Partial<SiteSettings>) => void;
+  onInvalid: (invalid: boolean) => void;
+}) {
   const hours = settings.store_hours;
+  const [latText, setLatText] = useState(String(settings.store_lat ?? ''));
+  const [lngText, setLngText] = useState(String(settings.store_lng ?? ''));
+  const [pasteText, setPasteText] = useState('');
+  const latCheck = parseCoordinate(latText, 'lat');
+  const lngCheck = parseCoordinate(lngText, 'lng');
+  const half = (latText.trim() === '') !== (lngText.trim() === '');
+  const invalid = !latCheck.ok || !lngCheck.ok || half;
+  useEffect(() => {
+    onInvalid(invalid);
+    return () => onInvalid(false);
+  }, [invalid, onInvalid]);
+  const setLat = (text: string) => {
+    setLatText(text);
+    const check = parseCoordinate(text, 'lat');
+    if (check.ok) edit({ store_lat: check.value });
+  };
+  const setLng = (text: string) => {
+    setLngText(text);
+    const check = parseCoordinate(text, 'lng');
+    if (check.ok) edit({ store_lng: check.value });
+  };
+  const paste = (text: string) => {
+    setPasteText(text);
+    const pair = parseCoordinatePair(text);
+    if (!pair) return;
+    setLat(pair.lat);
+    setLng(pair.lng);
+    setPasteText('');
+  };
   return (
     <section className="card" aria-label="Punto físico">
       <div className="card-head">
@@ -522,11 +436,57 @@ function Store({ settings, edit }: { settings: SiteSettings; edit: (patch: Parti
           onChange={(value) => edit({ store_address: value })}
         />
         <Text
-          label="Enlace de Google Maps"
+          label="Enlace de Google Maps (https://)"
           value={settings.store_maps_url ?? ''}
           max={300}
           onChange={(value) => edit({ store_maps_url: value })}
         />
+        <div className="field">
+          <label htmlFor="ed-coords">Coordenadas del local (pega las dos juntas)</label>
+          <input
+            className="input"
+            id="ed-coords"
+            inputMode="decimal"
+            placeholder="4.68, -74.08"
+            value={pasteText}
+            onChange={(event) => paste(event.target.value)}
+          />
+          <small className="muted coords-help">
+            Copia las coordenadas desde Google Maps (clic derecho sobre el local). Sirven para el mapa de
+            cobertura.
+          </small>
+        </div>
+        <div className="form-2">
+          <div className="field">
+            <label htmlFor="ed-lat">Latitud</label>
+            <input
+              className="input"
+              id="ed-lat"
+              inputMode="decimal"
+              placeholder="4.68"
+              aria-invalid={!latCheck.ok}
+              value={latText}
+              onChange={(event) => setLat(event.target.value)}
+            />
+            {!latCheck.ok ? <small className="ajustes-error">{latCheck.message}</small> : null}
+          </div>
+          <div className="field">
+            <label htmlFor="ed-lng">Longitud</label>
+            <input
+              className="input"
+              id="ed-lng"
+              inputMode="decimal"
+              placeholder="-74.08"
+              aria-invalid={!lngCheck.ok}
+              value={lngText}
+              onChange={(event) => setLng(event.target.value)}
+            />
+            {!lngCheck.ok ? <small className="ajustes-error">{lngCheck.message}</small> : null}
+          </div>
+        </div>
+        {half && latCheck.ok && lngCheck.ok ? (
+          <small className="ajustes-error">Escribe latitud y longitud, o deja las dos vacías.</small>
+        ) : null}
         {hours.map(([days, time], i) => (
           <div className="form-2" key={i}>
             <Text
@@ -629,6 +589,7 @@ function DeliveryAndPayments({
   const [zones, setZones] = useState<EditZone[]>([]);
   const [payments, setPayments] = useState<EditPayment[]>([]);
   const [newZone, setNewZone] = useState('');
+  const [newLocality, setNewLocality] = useState('');
   const [newPayment, setNewPayment] = useState('');
   const reload = useCallback(
     () =>
@@ -707,7 +668,9 @@ function DeliveryAndPayments({
         <div className="card-head">
           <div>
             <h2>Zonas de domicilio</h2>
-            <p>Costo y cobertura (aplican al instante)</p>
+            <p>
+              Costo y cobertura (aplican al instante). La localidad ubica la zona en el mapa de cobertura.
+            </p>
           </div>
         </div>
         <div className="rows">
@@ -715,6 +678,25 @@ function DeliveryAndPayments({
             <div className="row" key={zone.id}>
               <b>{zone.name}</b>
               <div className="right">
+                <select
+                  className={`input zone-locality${zone.locality_code ? '' : ' sin-localidad'}`}
+                  aria-label={`Localidad de ${zone.name}`}
+                  value={zone.locality_code ?? ''}
+                  onChange={(event) => {
+                    const locality_code = event.target.value || null;
+                    setZones((list) =>
+                      list.map((item) => (item.id === zone.id ? { ...item, locality_code } : item)),
+                    );
+                    void run(upsertZone(restaurantId, { ...zone, locality_code }), 'Localidad actualizada');
+                  }}
+                >
+                  <option value="">Sin localidad</option>
+                  {BOGOTA_LOCALITIES.map((locality) => (
+                    <option key={locality.code} value={locality.code}>
+                      {locality.name}
+                    </option>
+                  ))}
+                </select>
                 <input
                   className="input price-in"
                   inputMode="numeric"
@@ -749,12 +731,20 @@ function DeliveryAndPayments({
           className="inline-add"
           onSubmit={(event) => {
             event.preventDefault();
-            if (newZone.trim().length < 2) return;
+            const locality = BOGOTA_LOCALITIES.find((item) => item.code === newLocality);
+            const name = newZone.trim() || locality?.name || '';
+            if (name.length < 2) return;
             void run(
-              upsertZone(restaurantId, { name: newZone.trim(), fee: 6000, position: zones.length }),
-              `${newZone.trim()} agregada`,
+              upsertZone(restaurantId, {
+                name,
+                fee: 6000,
+                position: zones.length,
+                locality_code: locality?.code ?? null,
+              }),
+              `${name} agregada`,
             );
             setNewZone('');
+            setNewLocality('');
           }}
         >
           <input
@@ -764,6 +754,19 @@ function DeliveryAndPayments({
             value={newZone}
             onChange={(event) => setNewZone(event.target.value)}
           />
+          <select
+            className="input zone-locality"
+            aria-label="Localidad de la nueva zona"
+            value={newLocality}
+            onChange={(event) => setNewLocality(event.target.value)}
+          >
+            <option value="">Localidad…</option>
+            {BOGOTA_LOCALITIES.map((locality) => (
+              <option key={locality.code} value={locality.code}>
+                {locality.name}
+              </option>
+            ))}
+          </select>
           <button className="btn btn-soft" type="submit">
             Agregar
           </button>

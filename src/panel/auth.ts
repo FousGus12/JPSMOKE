@@ -1,6 +1,7 @@
 // Sesión del panel (D12): correo + contraseña y, para el admin o quien tenga apartados delegados (D38),
 // segundo paso TOTP (la base exige aal2).
 // Copiado de Aura y adaptado a la base compartida (D24).
+import { decideAuthStep } from '../core/auth-step';
 import { getSupabase } from '../lib/supabase';
 
 export interface Staff {
@@ -33,24 +34,34 @@ export async function signOut(): Promise<void> {
   await getSupabase().auth.signOut();
 }
 
-/** En qué paso está la persona: pide código, inscripción o deja entrar. */
+/**
+ * En qué paso está la persona: pide código, inscripción o deja entrar.
+ * D51: la sesión sale del almacenamiento local (solo va a la red si toca renovar el token); con ella,
+ * la ficha (`my_staff`, red), el nivel AAL (local: lee el JWT de la sesión) y los factores
+ * (`listFactors`, red: GET /user) se piden juntos, en una sola espera de red.
+ */
 export async function currentStep(): Promise<AuthStep> {
   const supabase = getSupabase();
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return { kind: 'sin_sesion' };
-  const { data: staff } = await supabase.rpc('my_staff');
-  if (!staff) {
+  const [{ data: staff }, { data: aal }, { data: factors }] = await Promise.all([
+    supabase.rpc('my_staff'),
+    supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+    supabase.auth.mfa.listFactors(),
+  ]);
+  const me = staff as (Staff & { aal_ok: boolean }) | null;
+  const decision = decideAuthStep({
+    staff: me,
+    currentLevel: aal?.currentLevel,
+    totp: factors?.totp,
+  });
+  if (decision.kind === 'sin_ficha' || !me) {
     await supabase.auth.signOut();
     return { kind: 'sin_sesion' };
   }
-  const me = staff as Staff & { aal_ok: boolean };
-  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  const { data: factors } = await supabase.auth.mfa.listFactors();
-  const verified = factors?.totp.find((factor) => factor.status === 'verified');
-  if (verified && aal?.currentLevel !== 'aal2') return { kind: 'verificar_totp', factorId: verified.id };
-  if (me.must_change_password) return { kind: 'cambiar_clave' };
-  if (me.needs_totp && !verified) return { kind: 'inscribir_totp' };
-  return { kind: 'dentro', staff: { ...me, permissions: me.permissions ?? [] } };
+  if (decision.kind === 'dentro')
+    return { kind: 'dentro', staff: { ...me, permissions: me.permissions ?? [] } };
+  return decision;
 }
 
 /** Inicia la inscripción del TOTP: QR (SVG en data URL) y secreto para escribirlo a mano. */

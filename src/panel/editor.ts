@@ -148,7 +148,7 @@ export async function uploadPhoto(restaurantId: string, file: File): Promise<str
 export interface SiteSettings {
   hero: { title?: string; kicker?: string; text?: string };
   sections: Record<string, boolean>;
-  channels: Record<'rappi' | 'didi', { visible: boolean; url: string }>;
+  channels: Record<string, { visible: boolean; url: string }>;
   blocks: {
     promo?: { visible?: boolean; tag?: string; title?: string; text?: string; cta?: string; coupon?: string };
     tour?: { kicker?: string; title?: string; text?: string; cards?: Array<{ title: string; text: string }> };
@@ -163,13 +163,15 @@ export interface SiteSettings {
   store_open: boolean;
   store_address: string | null;
   store_maps_url: string | null;
+  store_lat: number | null;
+  store_lng: number | null;
   store_hours: Array<[string, string]>;
   pickup_enabled: boolean;
   published_at: string | null;
   updated_at: string;
 }
 const SETTINGS_COLUMNS =
-  'hero, sections, channels, blocks, whatsapp, instagram, tiktok, hours, delivery_min, delivery_eta, accepting_orders, store_open, store_address, store_maps_url, store_hours, pickup_enabled, published_at, updated_at';
+  'hero, sections, channels, blocks, whatsapp, instagram, tiktok, hours, delivery_min, delivery_eta, accepting_orders, store_open, store_address, store_maps_url, store_lat, store_lng, store_hours, pickup_enabled, published_at, updated_at';
 
 export async function loadSettings(restaurantId: string): Promise<SiteSettings> {
   const { data, error } = await getSupabase()
@@ -192,10 +194,69 @@ export async function saveSettings(
   fail(error, 'los ajustes');
 }
 
+/** Las 19 localidades urbanas de Bogotá con su código IDECA (D44): el mapa de cobertura las une con las zonas. */
+export const BOGOTA_LOCALITIES: ReadonlyArray<{ code: string; name: string }> = [
+  { code: '01', name: 'Usaquén' },
+  { code: '02', name: 'Chapinero' },
+  { code: '03', name: 'Santa Fe' },
+  { code: '04', name: 'San Cristóbal' },
+  { code: '05', name: 'Usme' },
+  { code: '06', name: 'Tunjuelito' },
+  { code: '07', name: 'Bosa' },
+  { code: '08', name: 'Kennedy' },
+  { code: '09', name: 'Fontibón' },
+  { code: '10', name: 'Engativá' },
+  { code: '11', name: 'Suba' },
+  { code: '12', name: 'Barrios Unidos' },
+  { code: '13', name: 'Teusaquillo' },
+  { code: '14', name: 'Los Mártires' },
+  { code: '15', name: 'Antonio Nariño' },
+  { code: '16', name: 'Puente Aranda' },
+  { code: '17', name: 'La Candelaria' },
+  { code: '18', name: 'Rafael Uribe Uribe' },
+  { code: '19', name: 'Ciudad Bolívar' },
+];
+
+export const LAT_RANGE = [4.4, 4.9] as const;
+export const LNG_RANGE = [-74.3, -73.9] as const;
+
+/** Valida una coordenada escrita por el dueño. Vacío = sin coordenada (null). */
+export function parseCoordinate(
+  text: string,
+  kind: 'lat' | 'lng',
+): { ok: true; value: number | null } | { ok: false; message: string } {
+  const clean = text.trim().replace(/°/g, '').replace(',', '.');
+  if (!clean) return { ok: true, value: null };
+  const value = Number(clean);
+  const [min, max] = kind === 'lat' ? LAT_RANGE : LNG_RANGE;
+  if (!/^-?\d+(\.\d+)?$/.test(clean) || value < min || value > max)
+    return {
+      ok: false,
+      message:
+        kind === 'lat'
+          ? `La latitud de Bogotá está entre ${min} y ${max} (p. ej. 4.68).`
+          : `La longitud de Bogotá está entre ${min} y ${max} (p. ej. -74.08).`,
+    };
+  return { ok: true, value: Math.round(value * 1e6) / 1e6 };
+}
+
+/** Acepta lo que Google Maps copia con clic derecho: "4.68, -74.08" (también con punto y coma o espacio). */
+export function parseCoordinatePair(text: string): { lat: string; lng: string } | null {
+  const match = text
+    .trim()
+    .replace(/°/g, '')
+    .match(/^(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)$/);
+  return match ? { lat: match[1] as string, lng: match[2] as string } : null;
+}
+
+/** Enlaces de la página: solo https://. */
+export const isHttps = (url: string): boolean => /^https:\/\/[^\s/]+/i.test(url.trim());
+
 export interface EditZone {
   id: string;
   name: string;
   fee: number;
+  locality_code: string | null;
   active: boolean;
   position: number;
 }
@@ -214,7 +275,7 @@ export async function loadZonesAndPayments(
   const [zones, payments] = await Promise.all([
     supabase
       .from('delivery_zones')
-      .select('id, name, fee, active, position')
+      .select('id, name, fee, locality_code, active, position')
       .eq('restaurant_id', restaurantId)
       .order('position'),
     supabase

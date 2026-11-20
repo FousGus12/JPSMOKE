@@ -45,14 +45,14 @@ isOneToOne: false
                   ]
                 },"blocked_attempts": {
                   Row: {
-                    "at": string,"id": number,"reason": string,"restaurant_id": string
+                    "at": string,"customer_name": string | null,"id": number,"items_count": number | null,"phone_last4": string | null,"reason": string,"restaurant_id": string,"total_attempt": number | null,"zone_name": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "at"?: string,"id"?: never,"reason": string,"restaurant_id": string
+                    "at"?: string,"customer_name"?: string | null,"id"?: never,"items_count"?: number | null,"phone_last4"?: string | null,"reason": string,"restaurant_id": string,"total_attempt"?: number | null,"zone_name"?: string | null
                   }
                   Update: {
-                    "at"?: string,"id"?: never,"reason"?: string,"restaurant_id"?: string
+                    "at"?: string,"customer_name"?: string | null,"id"?: never,"items_count"?: number | null,"phone_last4"?: string | null,"reason"?: string,"restaurant_id"?: string,"total_attempt"?: number | null,"zone_name"?: string | null
                   }
                   Relationships: [
                     {
@@ -165,14 +165,14 @@ isOneToOne: false
                   ]
                 },"delivery_zones": {
                   Row: {
-                    "active": boolean,"fee": number,"id": string,"name": string,"position": number,"restaurant_id": string
+                    "active": boolean,"fee": number,"id": string,"locality_code": string | null,"name": string,"position": number,"restaurant_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "active"?: boolean,"fee"?: number,"id"?: string,"name": string,"position"?: number,"restaurant_id": string
+                    "active"?: boolean,"fee"?: number,"id"?: string,"locality_code"?: string | null,"name": string,"position"?: number,"restaurant_id": string
                   }
                   Update: {
-                    "active"?: boolean,"fee"?: number,"id"?: string,"name"?: string,"position"?: number,"restaurant_id"?: string
+                    "active"?: boolean,"fee"?: number,"id"?: string,"locality_code"?: string | null,"name"?: string,"position"?: number,"restaurant_id"?: string
                   }
                   Relationships: [
                     {
@@ -307,14 +307,14 @@ isOneToOne: false
                   ]
                 },"orders": {
                   Row: {
-                    "address": string,"barrio": string,"cancel_reason": string | null,"cash_with": number | null,"channel": Database["public"]['Enums']["order_channel"],"code": string,"coupon_code": string | null,"created_at": string,"customer_id": string | null,"customer_name": string,"delivery_fee": number,"discount": number,"fulfillment": string,"gift": string | null,"id": string,"notes": string,"number": number,"payment_label": string,"phone": string,"restaurant_id": string,"status": Database["public"]['Enums']["order_status"],"subtotal": number,"total": number,"track_hash": string,"updated_at": string,"zone_name": string
+                    "address": string,"barrio": string,"cancel_reason": string | null,"cash_with": number | null,"channel": Database["public"]['Enums']["order_channel"],"code": string,"coupon_code": string | null,"created_at": string,"customer_id": string | null,"customer_name": string,"delivery_fee": number,"discount": number,"fulfillment": string,"gift": string | null,"id": string,"is_test": boolean,"notes": string,"number": number,"payment_label": string,"phone": string,"restaurant_id": string,"status": Database["public"]['Enums']["order_status"],"subtotal": number,"total": number,"track_hash": string,"updated_at": string,"voided_from": Database["public"]['Enums']["order_status"] | null,"zone_name": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "address": string,"barrio"?: string,"cancel_reason"?: string | null,"cash_with"?: number | null,"channel"?: Database["public"]['Enums']["order_channel"],"code": string,"coupon_code"?: string | null,"created_at"?: string,"customer_id"?: string | null,"customer_name": string,"delivery_fee"?: number,"discount"?: number,"fulfillment"?: string,"gift"?: string | null,"id"?: string,"notes"?: string,"number": number,"payment_label": string,"phone": string,"restaurant_id": string,"status"?: Database["public"]['Enums']["order_status"],"subtotal": number,"total": number,"track_hash": string,"updated_at"?: string,"zone_name": string
+                    "address": string,"barrio"?: string,"cancel_reason"?: string | null,"cash_with"?: number | null,"channel"?: Database["public"]['Enums']["order_channel"],"code": string,"coupon_code"?: string | null,"created_at"?: string,"customer_id"?: string | null,"customer_name": string,"delivery_fee"?: number,"discount"?: number,"fulfillment"?: string,"gift"?: string | null,"id"?: string,"is_test"?: boolean,"notes"?: string,"number": number,"payment_label": string,"phone": string,"restaurant_id": string,"status"?: Database["public"]['Enums']["order_status"],"subtotal": number,"total": number,"track_hash": string,"updated_at"?: string,"voided_from"?: Database["public"]['Enums']["order_status"] | null,"zone_name": string
                   }
                   Update: {
-                    "address"?: string,"barrio"?: string,"cancel_reason"?: string | null,"cash_with"?: number | null,"channel"?: Database["public"]['Enums']["order_channel"],"code"?: string,"coupon_code"?: string | null,"created_at"?: string,"customer_id"?: string | null,"customer_name"?: string,"delivery_fee"?: number,"discount"?: number,"fulfillment"?: string,"gift"?: string | null,"id"?: string,"notes"?: string,"number"?: number,"payment_label"?: string,"phone"?: string,"restaurant_id"?: string,"status"?: Database["public"]['Enums']["order_status"],"subtotal"?: number,"total"?: number,"track_hash"?: string,"updated_at"?: string,"zone_name"?: string
+                    "address"?: string,"barrio"?: string,"cancel_reason"?: string | null,"cash_with"?: number | null,"channel"?: Database["public"]['Enums']["order_channel"],"code"?: string,"coupon_code"?: string | null,"created_at"?: string,"customer_id"?: string | null,"customer_name"?: string,"delivery_fee"?: number,"discount"?: number,"fulfillment"?: string,"gift"?: string | null,"id"?: string,"is_test"?: boolean,"notes"?: string,"number"?: number,"payment_label"?: string,"phone"?: string,"restaurant_id"?: string,"status"?: Database["public"]['Enums']["order_status"],"subtotal"?: number,"total"?: number,"track_hash"?: string,"updated_at"?: string,"voided_from"?: Database["public"]['Enums']["order_status"] | null,"zone_name"?: string
                   }
                   Relationships: [
                     {
@@ -431,14 +431,14 @@ isOneToOne: false
                   ]
                 },"restaurant_settings": {
                   Row: {
-                    "accepting_orders": boolean,"blocks": NonNullable<Json>,"brand": NonNullable<Json>,"channels": NonNullable<Json>,"delivery_eta": string,"delivery_min": number,"hero": NonNullable<Json>,"hours": NonNullable<Json>,"instagram": string | null,"intro_mode": Database["public"]['Enums']["intro_mode"],"pickup_enabled": boolean,"protection": Database["public"]['Enums']["protection_level"],"published_at": string | null,"restaurant_id": string,"sections": NonNullable<Json>,"site_url": string | null,"store_address": string | null,"store_hours": NonNullable<Json>,"store_maps_url": string | null,"store_open": boolean,"tiktok": string | null,"updated_at": string,"whatsapp": string | null,"whatsapp_mode": string
+                    "accepting_orders": boolean,"blocks": NonNullable<Json>,"brand": NonNullable<Json>,"channels": NonNullable<Json>,"delivery_eta": string,"delivery_min": number,"hero": NonNullable<Json>,"hours": NonNullable<Json>,"instagram": string | null,"intro_mode": Database["public"]['Enums']["intro_mode"],"pickup_enabled": boolean,"protection": Database["public"]['Enums']["protection_level"],"published_at": string | null,"restaurant_id": string,"sections": NonNullable<Json>,"site_url": string | null,"store_address": string | null,"store_hours": NonNullable<Json>,"store_lat": number | null,"store_lng": number | null,"store_maps_url": string | null,"store_open": boolean,"target_margin": number,"tiktok": string | null,"updated_at": string,"whatsapp": string | null,"whatsapp_mode": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "accepting_orders"?: boolean,"blocks"?: NonNullable<Json>,"brand"?: NonNullable<Json>,"channels"?: NonNullable<Json>,"delivery_eta"?: string,"delivery_min"?: number,"hero"?: NonNullable<Json>,"hours"?: NonNullable<Json>,"instagram"?: string | null,"intro_mode"?: Database["public"]['Enums']["intro_mode"],"pickup_enabled"?: boolean,"protection"?: Database["public"]['Enums']["protection_level"],"published_at"?: string | null,"restaurant_id": string,"sections"?: NonNullable<Json>,"site_url"?: string | null,"store_address"?: string | null,"store_hours"?: NonNullable<Json>,"store_maps_url"?: string | null,"store_open"?: boolean,"tiktok"?: string | null,"updated_at"?: string,"whatsapp"?: string | null,"whatsapp_mode"?: string
+                    "accepting_orders"?: boolean,"blocks"?: NonNullable<Json>,"brand"?: NonNullable<Json>,"channels"?: NonNullable<Json>,"delivery_eta"?: string,"delivery_min"?: number,"hero"?: NonNullable<Json>,"hours"?: NonNullable<Json>,"instagram"?: string | null,"intro_mode"?: Database["public"]['Enums']["intro_mode"],"pickup_enabled"?: boolean,"protection"?: Database["public"]['Enums']["protection_level"],"published_at"?: string | null,"restaurant_id": string,"sections"?: NonNullable<Json>,"site_url"?: string | null,"store_address"?: string | null,"store_hours"?: NonNullable<Json>,"store_lat"?: number | null,"store_lng"?: number | null,"store_maps_url"?: string | null,"store_open"?: boolean,"target_margin"?: number,"tiktok"?: string | null,"updated_at"?: string,"whatsapp"?: string | null,"whatsapp_mode"?: string
                   }
                   Update: {
-                    "accepting_orders"?: boolean,"blocks"?: NonNullable<Json>,"brand"?: NonNullable<Json>,"channels"?: NonNullable<Json>,"delivery_eta"?: string,"delivery_min"?: number,"hero"?: NonNullable<Json>,"hours"?: NonNullable<Json>,"instagram"?: string | null,"intro_mode"?: Database["public"]['Enums']["intro_mode"],"pickup_enabled"?: boolean,"protection"?: Database["public"]['Enums']["protection_level"],"published_at"?: string | null,"restaurant_id"?: string,"sections"?: NonNullable<Json>,"site_url"?: string | null,"store_address"?: string | null,"store_hours"?: NonNullable<Json>,"store_maps_url"?: string | null,"store_open"?: boolean,"tiktok"?: string | null,"updated_at"?: string,"whatsapp"?: string | null,"whatsapp_mode"?: string
+                    "accepting_orders"?: boolean,"blocks"?: NonNullable<Json>,"brand"?: NonNullable<Json>,"channels"?: NonNullable<Json>,"delivery_eta"?: string,"delivery_min"?: number,"hero"?: NonNullable<Json>,"hours"?: NonNullable<Json>,"instagram"?: string | null,"intro_mode"?: Database["public"]['Enums']["intro_mode"],"pickup_enabled"?: boolean,"protection"?: Database["public"]['Enums']["protection_level"],"published_at"?: string | null,"restaurant_id"?: string,"sections"?: NonNullable<Json>,"site_url"?: string | null,"store_address"?: string | null,"store_hours"?: NonNullable<Json>,"store_lat"?: number | null,"store_lng"?: number | null,"store_maps_url"?: string | null,"store_open"?: boolean,"target_margin"?: number,"tiktok"?: string | null,"updated_at"?: string,"whatsapp"?: string | null,"whatsapp_mode"?: string
                   }
                   Relationships: [
                     {
@@ -505,14 +505,14 @@ isOneToOne: false
                   ]
                 },"supplies": {
                   Row: {
-                    "active": boolean,"id": string,"min_stock": number,"name": string,"per_purchase": number,"position": number,"purchase_unit": string,"restaurant_id": string,"stock": number,"unit": string,"updated_at": string
+                    "active": boolean,"cost": number | null,"cost_at": string | null,"cost_basis": string,"id": string,"initial_at": string | null,"initial_stock": number | null,"min_stock": number,"name": string,"per_purchase": number,"position": number,"purchase_unit": string,"restaurant_id": string,"stock": number,"unit": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "active"?: boolean,"id"?: string,"min_stock"?: number,"name": string,"per_purchase"?: number,"position"?: number,"purchase_unit": string,"restaurant_id": string,"stock"?: number,"unit": string,"updated_at"?: string
+                    "active"?: boolean,"cost"?: number | null,"cost_at"?: string | null,"cost_basis"?: string,"id"?: string,"initial_at"?: string | null,"initial_stock"?: number | null,"min_stock"?: number,"name": string,"per_purchase"?: number,"position"?: number,"purchase_unit": string,"restaurant_id": string,"stock"?: number,"unit": string,"updated_at"?: string
                   }
                   Update: {
-                    "active"?: boolean,"id"?: string,"min_stock"?: number,"name"?: string,"per_purchase"?: number,"position"?: number,"purchase_unit"?: string,"restaurant_id"?: string,"stock"?: number,"unit"?: string,"updated_at"?: string
+                    "active"?: boolean,"cost"?: number | null,"cost_at"?: string | null,"cost_basis"?: string,"id"?: string,"initial_at"?: string | null,"initial_stock"?: number | null,"min_stock"?: number,"name"?: string,"per_purchase"?: number,"position"?: number,"purchase_unit"?: string,"restaurant_id"?: string,"stock"?: number,"unit"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -557,14 +557,14 @@ isOneToOne: false
                   ]
                 },"whatsapp_messages": {
                   Row: {
-                    "attempts": number,"claimed_at": string | null,"created_at": string,"error": string | null,"id": string,"kind": Database["public"]['Enums']["wa_kind"],"order_id": string | null,"provider_id": string | null,"restaurant_id": string,"sent_at": string | null,"status": Database["public"]['Enums']["wa_status"]
+                    "attempts": number,"claimed_at": string | null,"created_at": string,"error": string | null,"id": string,"kind": Database["public"]['Enums']["wa_kind"],"order_id": string | null,"provider_id": string | null,"restaurant_id": string,"sent_at": string | null,"status": Database["public"]['Enums']["wa_status"],"supply_id": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "attempts"?: number,"claimed_at"?: string | null,"created_at"?: string,"error"?: string | null,"id"?: string,"kind": Database["public"]['Enums']["wa_kind"],"order_id"?: string | null,"provider_id"?: string | null,"restaurant_id": string,"sent_at"?: string | null,"status"?: Database["public"]['Enums']["wa_status"]
+                    "attempts"?: number,"claimed_at"?: string | null,"created_at"?: string,"error"?: string | null,"id"?: string,"kind": Database["public"]['Enums']["wa_kind"],"order_id"?: string | null,"provider_id"?: string | null,"restaurant_id": string,"sent_at"?: string | null,"status"?: Database["public"]['Enums']["wa_status"],"supply_id"?: string | null
                   }
                   Update: {
-                    "attempts"?: number,"claimed_at"?: string | null,"created_at"?: string,"error"?: string | null,"id"?: string,"kind"?: Database["public"]['Enums']["wa_kind"],"order_id"?: string | null,"provider_id"?: string | null,"restaurant_id"?: string,"sent_at"?: string | null,"status"?: Database["public"]['Enums']["wa_status"]
+                    "attempts"?: number,"claimed_at"?: string | null,"created_at"?: string,"error"?: string | null,"id"?: string,"kind"?: Database["public"]['Enums']["wa_kind"],"order_id"?: string | null,"provider_id"?: string | null,"restaurant_id"?: string,"sent_at"?: string | null,"status"?: Database["public"]['Enums']["wa_status"],"supply_id"?: string | null
                   }
                   Relationships: [
                     {
@@ -579,6 +579,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "restaurants"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "whatsapp_messages_supply_id_fkey"
+      columns: ["supply_id"]
+isOneToOne: false
+      referencedRelation: "supplies"
+      referencedColumns: ["id"]
     }
                   ]
                 }
@@ -587,7 +593,10 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "board_summary":
+            "audit_list":
+{ Args: { "p_before"?: string,"p_limit"?: number }; Returns: Json
+                           },
+"board_summary":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
 "can":
@@ -607,6 +616,9 @@ isOneToOne: false
                            },
 "create_manual_order":
 { Args: { "p": Json }; Returns: string
+                           },
+"customers_list":
+{ Args: { "p_limit"?: number,"p_offset"?: number,"p_search"?: string }; Returns: Json
                            },
 "is_admin_of":
 { Args: { "rid": string }; Returns: boolean
@@ -636,10 +648,10 @@ isOneToOne: false
 { Args: { "p_key": string,"p_max": number,"p_seconds": number }; Returns: boolean
                            },
 "register_blocked":
-{ Args: { "p_reason": string,"p_restaurant": string }; Returns: undefined
+{ Args: { "p_detail"?: Json,"p_reason": string,"p_restaurant": string }; Returns: undefined
                            },
 "register_supply":
-{ Args: { "p_kind": Database["public"]['Enums']["supply_move_kind"],"p_note"?: string,"p_qty": number,"p_supply": string }; Returns: number
+{ Args: { "p_cost"?: number,"p_kind": Database["public"]['Enums']["supply_move_kind"],"p_note"?: string,"p_qty": number,"p_supply": string }; Returns: number
                            },
 "revoke_sessions":
 { Args: { "p_user": string }; Returns: undefined
@@ -690,7 +702,7 @@ isOneToOne: false
                            }
           }
           Enums: {
-            "consent_kind": "datos_pedido"|"promociones"|"cupon_bienvenida"|"cotizacion","coupon_kind": "porcentaje"|"valor"|"envio"|"regalo","intro_mode": "completa"|"aviso"|"ninguna","order_channel": "web"|"whatsapp"|"manual"|"rappi"|"didi","order_status": "nuevo"|"confirmado"|"en_cocina"|"en_camino"|"entregado"|"cancelado","protection_level": "basica"|"recomendada"|"estricta","quote_status": "nueva"|"contactada"|"cerrada","staff_role": "admin"|"operador","supply_move_kind": "compra"|"venta"|"devolucion"|"merma"|"ajuste","wa_kind": "pedido_recibido"|"aviso_negocio"|"en_camino"|"informe_semanal","wa_status": "pendiente"|"enviado"|"simulado"|"fallido"|"omitido"
+            "consent_kind": "datos_pedido"|"promociones"|"cupon_bienvenida"|"cotizacion","coupon_kind": "porcentaje"|"valor"|"envio"|"regalo","intro_mode": "completa"|"aviso"|"ninguna","order_channel": "web"|"whatsapp"|"manual"|"rappi"|"didi","order_status": "nuevo"|"confirmado"|"en_cocina"|"en_camino"|"entregado"|"cancelado","protection_level": "basica"|"recomendada"|"estricta","quote_status": "nueva"|"contactada"|"cerrada","staff_role": "admin"|"operador","supply_move_kind": "compra"|"venta"|"devolucion"|"merma"|"ajuste"|"inicial","wa_kind": "pedido_recibido"|"aviso_negocio"|"en_camino"|"informe_semanal"|"stock_bajo","wa_status": "pendiente"|"enviado"|"simulado"|"fallido"|"omitido"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -810,7 +822,7 @@ export const Constants = {
           }
         },"public": {
           Enums: {
-            "consent_kind": ["datos_pedido", "promociones", "cupon_bienvenida", "cotizacion"],"coupon_kind": ["porcentaje", "valor", "envio", "regalo"],"intro_mode": ["completa", "aviso", "ninguna"],"order_channel": ["web", "whatsapp", "manual", "rappi", "didi"],"order_status": ["nuevo", "confirmado", "en_cocina", "en_camino", "entregado", "cancelado"],"protection_level": ["basica", "recomendada", "estricta"],"quote_status": ["nueva", "contactada", "cerrada"],"staff_role": ["admin", "operador"],"supply_move_kind": ["compra", "venta", "devolucion", "merma", "ajuste"],"wa_kind": ["pedido_recibido", "aviso_negocio", "en_camino", "informe_semanal"],"wa_status": ["pendiente", "enviado", "simulado", "fallido", "omitido"]
+            "consent_kind": ["datos_pedido", "promociones", "cupon_bienvenida", "cotizacion"],"coupon_kind": ["porcentaje", "valor", "envio", "regalo"],"intro_mode": ["completa", "aviso", "ninguna"],"order_channel": ["web", "whatsapp", "manual", "rappi", "didi"],"order_status": ["nuevo", "confirmado", "en_cocina", "en_camino", "entregado", "cancelado"],"protection_level": ["basica", "recomendada", "estricta"],"quote_status": ["nueva", "contactada", "cerrada"],"staff_role": ["admin", "operador"],"supply_move_kind": ["compra", "venta", "devolucion", "merma", "ajuste", "inicial"],"wa_kind": ["pedido_recibido", "aviso_negocio", "en_camino", "informe_semanal", "stock_bajo"],"wa_status": ["pendiente", "enviado", "simulado", "fallido", "omitido"]
           }
         }
 } as const

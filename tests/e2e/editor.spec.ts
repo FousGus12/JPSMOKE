@@ -67,9 +67,13 @@ test('carta: precio, agotado en vivo, foto y producto nuevo', async ({ page }) =
   await expect(page.getByTestId('fila-burger-e2e')).toBeVisible();
 });
 
-test('editar página: textos, canales, medios de pago y publicar', async ({ page }) => {
+test('editar página: textos, medios de pago y publicar', async ({ page }) => {
   await loginAdmin(page);
-  await goTo(page, 'Editar página');
+  await goTo(page, 'Editar página'); // vive dentro del grupo desplegable "Contenido" (D41)
+  await expect(page.getByRole('heading', { name: 'Editar página', level: 1 })).toBeVisible();
+  // Canales, horario y redes salieron a Administración → Ajustes (D41/D45): un solo editor.
+  await expect(page.getByLabel('Enlace de Rappi')).toHaveCount(0);
+  await expect(page.getByLabel('Instagram')).toHaveCount(0);
   await page.getByLabel('Título de la promo').fill('Noche de humo');
   await page.getByRole('button', { name: 'Guardar', exact: true }).click();
   await expect(page.getByText(/Cambios guardados/)).toBeVisible();
@@ -83,7 +87,10 @@ test('editar página: textos, canales, medios de pago y publicar', async ({ page
   await page.getByLabel('Datáfono disponible').uncheck();
   await expect(page.getByText('Oculto en el pedido')).toBeVisible();
   await page.getByLabel('Nuevo medio de pago').fill('Bold E2E');
-  await page.getByRole('button', { name: 'Agregar' }).nth(1).click();
+  await page
+    .locator('section.card', { has: page.getByRole('heading', { name: 'Medios de pago' }) })
+    .getByRole('button', { name: 'Agregar' })
+    .click();
   await expect(page.getByText('Bold E2E agregado')).toBeVisible();
 
   await page.getByRole('button', { name: 'Publicar' }).click();

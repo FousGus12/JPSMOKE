@@ -1,6 +1,6 @@
 // Datos de ventas (F8). Solo admin con dos pasos; la base calcula todo en hora de Bogotá.
 import { getSupabase } from '../lib/supabase';
-import type { WeeklyReport } from '../core/sales';
+import type { VoidedAfterClose, WeeklyReport } from '../core/sales';
 
 export interface SalesSummary {
   days: number;
@@ -20,6 +20,8 @@ export interface SalesSummary {
   customers: number;
   recurrent_pct: number;
   blocked: number;
+  /** D42: entregados anulados después del cierre de caja de su día (puede faltar en una base vieja). */
+  voided_after_close?: VoidedAfterClose[];
 }
 
 export async function loadSales(days: number): Promise<SalesSummary> {

@@ -1,0 +1,202 @@
+/* JP Smoke · panel · pedidos (v0.18). Solo clases: la CSP prohíbe atributos style. */
+
+/* Entregados de hoy compactos (D42): código y total; se despliegan al tocarlos. */
+.ocard.ocard-compact {
+  padding: 0;
+  gap: 0;
+  cursor: default;
+}
+.ocard-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ocard-toggle b {
+  font-family: var(--font-display);
+  font-size: 17px;
+  letter-spacing: 0.03em;
+}
+.ocard-toggle span {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 700;
+}
+.ocard-toggle::after {
+  content: '▾';
+  color: var(--muted);
+  font-size: 12px;
+  transition: transform var(--t1) var(--ease);
+}
+.ocard-toggle[aria-expanded='true']::after {
+  transform: rotate(180deg);
+}
+.ocard-toggle:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+.ocard-more {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--line);
+}
+.ocard-more .btn {
+  justify-self: start;
+}
+
+/* Anular (D42) */
+.void-row {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+.void-form {
+  display: grid;
+  gap: 14px;
+}
+.void-sum {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 14px;
+}
+.void-reasons {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.void-reasons legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.void-reasons .chip-check {
+  min-height: 40px;
+  font-size: 13px;
+}
+.void-reasons .chip-check:has(input:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.void-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 600;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ocard-toggle::after {
+    transition: none;
+  }
+}
+
+/* Ventas: anulados después del cierre de caja (D42) */
+.voided-after td.reason {
+  color: var(--text-2);
+}
+
+/* Resumen: aviso de frenados como enlace a Seguridad */
+.note-link {
+  display: block;
+  text-decoration: none;
+  border: 1px solid transparent;
+}
+.note-link:hover {
+  border-color: var(--text-2);
+}
+.note-link:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+/* Tablero arrastrable (D53). El dedo desplaza el tablero; el arrastre empieza con pulsación larga
+   y desde ahí un touchmove no pasivo bloquea el scroll. Sin sombras: borde y opacidad. */
+.ocard-drag {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.ocard.is-lifted {
+  opacity: 0.35;
+  border-style: dashed;
+}
+.ocard.is-pending {
+  opacity: 0.6;
+  cursor: progress;
+}
+.ocard-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 300;
+  margin: 0;
+  pointer-events: none;
+  border-color: var(--accent);
+  opacity: 0.95;
+  will-change: transform;
+}
+.ocard-ghost.is-returning {
+  transition: transform 200ms var(--ease);
+}
+.board.is-dragging {
+  scroll-snap-type: none;
+  cursor: grabbing;
+}
+.board.is-dragging .col {
+  transition:
+    border-color var(--t1) var(--ease),
+    opacity var(--t1) var(--ease);
+}
+.board.is-dragging .col-drop {
+  border-style: dashed;
+  border-color: var(--accent);
+}
+.board.is-dragging .col-no {
+  opacity: 0.5;
+}
+.board.is-dragging .col-drop.is-over {
+  border-style: solid;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+.board.is-dragging .col-no.is-over {
+  border-color: var(--danger);
+}
+.board-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ocard-ghost.is-returning,
+  .board.is-dragging .col {
+    transition: none;
+  }
+}
+
+/* Confirmación al soltar en Entregado o saltando estados. */
+.confirm-move {
+  margin: 0 0 16px;
+  font-size: 15px;
+  line-height: 1.45;
+}

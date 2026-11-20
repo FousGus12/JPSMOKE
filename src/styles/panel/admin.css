@@ -1,0 +1,130 @@
+/* JP Smoke · panel · admin (v0.18). Solo clases: la CSP prohíbe atributos style. */
+.side-nav .nav-group-head {
+  justify-content: flex-start;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 10px;
+}
+.side-nav .nav-group-head .chev {
+  margin-left: auto;
+  transition: transform 0.15s var(--ease);
+}
+.side-nav .nav-group-head[aria-expanded='true'] .chev {
+  transform: rotate(90deg);
+}
+.nav-group {
+  display: grid;
+  gap: 2px;
+}
+.nav-group[hidden] {
+  display: none;
+}
+.nav-group button {
+  padding-left: 18px;
+}
+.tag-ok {
+  color: var(--ok);
+}
+.tag-bad {
+  color: var(--danger);
+}
+.tag-warn {
+  color: var(--warn);
+}
+.cli-list,
+.seg-team,
+.seg-audit {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+.cli-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(0, 2fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+.cli-row.is-blocked {
+  opacity: 0.75;
+}
+.cli-who {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.cli-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.cli-notes {
+  overflow-wrap: anywhere;
+}
+.cli-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+.cli-stats dt {
+  font-size: 11px;
+  color: var(--muted);
+}
+.cli-stats dd {
+  margin: 2px 0 0;
+  font-weight: 700;
+}
+.cli-actions {
+  display: flex;
+  gap: 8px;
+}
+.btn-danger {
+  background: var(--danger);
+  color: #1a0000;
+}
+.seg-team li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.seg-audit li {
+  display: grid;
+  gap: 2px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.seg-detail {
+  overflow-wrap: anywhere;
+  color: var(--text-2);
+}
+@media (max-width: 720px) {
+  .cli-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
+
+.view-error {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 40px 16px;
+  text-align: center;
+}
+
+/* Aviso de versión nueva del panel (trozo diferido que ya no existe tras un despliegue). */
+.new-version {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 16px;
+}

@@ -8,6 +8,8 @@ import {
   changeQty,
   childrenOf,
   comboUpsell,
+  dropAddonsWithoutDish,
+  hasDish,
   normalizeCart,
   orderItems,
   type CartCoupon,
@@ -16,6 +18,7 @@ import {
 } from '../core/cart';
 import { formatCop as money } from '../core/money';
 import { normalizeColombianMobile } from '../core/phone';
+import { bogotaDay, forcedWelcome, welcomeToShow } from '../core/welcome';
 import {
   rememberOrder,
   recentOrders,
@@ -24,7 +27,22 @@ import {
   type RememberedOrder,
   ORDER_STEPS,
 } from '../core/tracking';
-import { mensajesPedido, type PedidoError } from '../../supabase/functions/_shared/pedido';
+import { mensajesPedido, type PedidoError } from '../../supabase/functions/_shared/mensajes';
+import { createTokenGate, type TokenGate } from '../core/token-gate';
+import {
+  asLocalities,
+  coverageFor,
+  coverageForLocality,
+  coverageMessage,
+  toleranceFor,
+  zoneForLocality,
+  type Coverage,
+  type GeoProblem,
+  type Locality,
+} from '../core/coverage';
+
+// Lo oculto por `.reveal` solo se oculta si este script corre (sin JS o con error, todo se ve).
+document.documentElement.classList.add('js-reveal');
 
 const qs = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document) =>
   root.querySelector<T>(sel);
@@ -37,6 +55,28 @@ const esc = (text: unknown) =>
     (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch] ?? ch,
   );
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- Aparición al hacer scroll ----------
+   Va al principio: un error más abajo no puede dejar secciones en opacity 0. Lo que ya está sobre el
+   pliegue se muestra de una; sin IntersectionObserver se muestra todo. */
+(function setupReveal() {
+  const items = qsa('.reveal');
+  const show = (el: Element) => el.classList.add('is-in');
+  if (!('IntersectionObserver' in window)) return items.forEach(show);
+  const io = new IntersectionObserver(
+    (entries) =>
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        show(entry.target);
+        io.unobserve(entry.target);
+      }),
+    { threshold: 0, rootMargin: '0px 0px 10% 0px' },
+  );
+  items.forEach((el) => {
+    if (el.getBoundingClientRect().top < innerHeight) show(el);
+    else io.observe(el);
+  });
+})();
 
 const dataEl = document.getElementById('jp-data');
 const data = JSON.parse(dataEl?.textContent ?? '{}') as ClientData;
@@ -66,10 +106,22 @@ let products: CartProduct[] = data.products.map(({ id, price, comboPrice, availa
 }));
 const info = new Map(data.products.map((product) => [product.id, product]));
 const newKey = () => crypto.randomUUID();
-let cart = normalizeCart(
-  store.get<CartLine[]>('carrito', []).filter((line) => info.has(line.productId)),
-  newKey,
-);
+const isAddon = (id: string) => info.get(id)?.addon ?? false;
+let cart = dropAddonsWithoutDish(
+  normalizeCart(
+    store.get<CartLine[]>('carrito', []).filter((line) => info.has(line.productId)),
+    newKey,
+  ),
+  isAddon,
+).lines;
+/** D47: si ya no queda ningún plato, se quitan las adiciones (ligadas y aparte) con aviso. */
+function dropOrphanAddons() {
+  const result = dropAddonsWithoutDish(cart, isAddon);
+  if (!result.removed) return;
+  cart = result.lines;
+  store.set('carrito', cart);
+  toast('Quitamos las adiciones: van con un plato');
+}
 let coupon: CartCoupon | null = null;
 let couponCode = '';
 const choice = new Map<string, boolean>();
@@ -108,8 +160,9 @@ const rest = (path: string) =>
   }).then((res) => (res.ok ? (res.json() as Promise<unknown>) : null));
 /** Inventario (D30): productos que no alcanzan con los insumos salen agotados; si solo falta un extra del combo, se puede pedir sola. */
 let comboOut = new Set<string>();
-async function applyStockStatus() {
-  const res = await fetch(`${data.supabaseUrl}/rest/v1/rpc/stock_status`, {
+type StockStatus = { sold_out: string[]; combo_out: string[] };
+function fetchStockStatus(): Promise<StockStatus | null> {
+  return fetch(`${data.supabaseUrl}/rest/v1/rpc/stock_status`, {
     method: 'POST',
     headers: {
       apikey: data.anonKey,
@@ -117,9 +170,11 @@ async function applyStockStatus() {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ p_restaurant: data.restaurant }),
-  }).catch(() => null);
-  if (!res?.ok) return;
-  const status = (await res.json()) as { sold_out: string[]; combo_out: string[] };
+  })
+    .then((res) => (res.ok ? (res.json() as Promise<StockStatus>) : null))
+    .catch(() => null);
+}
+function applyStockStatus(status: StockStatus) {
   const soldOut = new Set(status.sold_out);
   comboOut = new Set(status.combo_out);
   products = products.map((product) =>
@@ -146,18 +201,23 @@ async function applyStockStatus() {
     ),
     newKey,
   );
+  dropOrphanAddons();
 }
 
 /** Zonas, medios de pago, mínimo y "recibiendo pedidos" también en vivo (F6): el admin los cambia sin publicar. */
-async function refreshOrdering() {
+type Ordering = [settings: unknown, zones: unknown, payments: unknown];
+function fetchOrdering(): Promise<Ordering> {
   const rid = `restaurant_id=eq.${data.restaurantId}`;
-  const [settings, zones, payments] = await Promise.all([
-    rest(
+  const safe = (path: string) => rest(path).catch(() => null);
+  return Promise.all([
+    safe(
       `restaurant_settings?select=accepting_orders,delivery_min,delivery_eta,pickup_enabled,store_address&${rid}`,
     ),
-    rest(`delivery_zones?select=id,name,fee,active&active=eq.true&order=position&${rid}`),
-    rest(`payment_methods?select=code,label,asks_change&order=position&${rid}`),
+    safe(`delivery_zones?select=id,name,fee,active,locality_code&active=eq.true&order=position&${rid}`),
+    safe(`payment_methods?select=code,label,asks_change&order=position&${rid}`),
   ]);
+}
+function applyOrdering([settings, zones, payments]: Ordering) {
   const st = (
     settings as Array<{
       accepting_orders: boolean;
@@ -174,7 +234,12 @@ async function refreshOrdering() {
     data.deliveryMin = st.delivery_min;
     data.deliveryEta = st.delivery_eta;
   }
-  if (Array.isArray(zones)) data.zones = zones as ClientData['zones'];
+  if (Array.isArray(zones)) {
+    data.zones = (
+      zones as Array<{ id: string; name: string; fee: number; active: boolean; locality_code: string | null }>
+    ).map(({ locality_code, ...zone }) => ({ ...zone, localityCode: locality_code ?? null }));
+    syncCoverage();
+  }
   if (Array.isArray(payments))
     data.payments = (payments as Array<{ code: string; label: string; asks_change: boolean }>).map((row) => ({
       code: row.code,
@@ -182,71 +247,65 @@ async function refreshOrdering() {
       asksChange: row.asks_change,
     }));
 }
+async function refreshOrdering() {
+  applyOrdering(await fetchOrdering());
+}
 
+type LiveProduct = { id: string; price: number; combo_price: number | null; available: boolean };
+function applyLiveProducts(live: LiveProduct[]) {
+  products = live.map((row) => ({
+    id: row.id,
+    price: row.price,
+    comboPrice: row.combo_price,
+    available: row.available,
+  }));
+  for (const row of live) {
+    qsa<HTMLElement>(`[data-product="${row.id}"]`).forEach((card) =>
+      card.classList.toggle('sold-out', !row.available),
+    );
+    qsa<HTMLButtonElement>(`[data-add="${row.id}"]`).forEach((btn) => (btn.disabled = !row.available));
+  }
+  cart = normalizeCart(
+    cart.filter((line) => products.some((product) => product.id === line.productId && product.available)),
+    newKey,
+  );
+  dropOrphanAddons();
+}
+
+/**
+ * D51: productos, inventario, ajustes, zonas y pagos en una sola tanda (5 peticiones en paralelo).
+ * Se aplican en orden lógico: primero productos, luego inventario (que agota sobre esos productos),
+ * luego lo del pedido. Cada petición falla sola: sin conexión se usa lo publicado.
+ */
 async function refreshAvailability() {
   try {
-    const url = `${data.supabaseUrl}/rest/v1/products?select=id,price,combo_price,available&restaurant_id=eq.${data.restaurantId}`;
-    const res = await fetch(url, {
-      headers: { apikey: data.anonKey, Authorization: `Bearer ${data.anonKey}` },
-    });
-    if (!res.ok) return;
-    const live = (await res.json()) as Array<{
-      id: string;
-      price: number;
-      combo_price: number | null;
-      available: boolean;
-    }>;
-    products = live.map((row) => ({
-      id: row.id,
-      price: row.price,
-      comboPrice: row.combo_price,
-      available: row.available,
-    }));
-    for (const row of live) {
-      qsa<HTMLElement>(`[data-product="${row.id}"]`).forEach((card) =>
-        card.classList.toggle('sold-out', !row.available),
-      );
-      qsa<HTMLButtonElement>(`[data-add="${row.id}"]`).forEach((btn) => (btn.disabled = !row.available));
-    }
-    cart = normalizeCart(
-      cart.filter((line) => products.some((product) => product.id === line.productId && product.available)),
-      newKey,
-    );
-    await applyStockStatus();
+    const [live, stock, ordering] = await Promise.all([
+      rest(`products?select=id,price,combo_price,available&restaurant_id=eq.${data.restaurantId}`).catch(
+        () => null,
+      ),
+      fetchStockStatus(),
+      fetchOrdering(),
+    ]);
+    if (Array.isArray(live)) applyLiveProducts(live as LiveProduct[]);
+    if (stock) applyStockStatus(stock);
     syncCount();
-    await refreshOrdering();
+    applyOrdering(ordering);
   } catch {
     /* sin conexión: se usa lo publicado */
   }
 }
 
-/* ---------- Inicio: 4 productos que se despliegan ---------- */
+/* ---------- Inicio: 4 productos que se despliegan ----------
+   D50: en celular o pantalla táctil (y con "reducir movimiento" en cualquier ancho) el inicio mide una
+   pantalla y las fotos entran solas con CSS. Solo el escritorio liga la animación al desplazamiento. */
 const hero = qs('#inicio');
 const heroCards = qsa<HTMLElement>('.hcard');
+/** Debe coincidir con la media query del bloque D50 de sitio.css. */
+const compactHero = matchMedia('(max-width: 760px), (pointer: coarse)');
+/** El progreso sigue al scroll solo en escritorio y sin "reducir movimiento". */
+const heroLinked = () => Boolean(hero) && !reduced && !compactHero.matches;
 type Layout = { start: number[][]; end: number[][]; s0: number; s1: number; vw: number; vh: number };
 function layout(): Layout {
-  const vw = innerWidth;
-  const vh = innerHeight;
-  if (vw < 760)
-    return {
-      // Juntas y asomadas sobre la barra inferior para que se vea el arranque de la animación.
-      start: [
-        [0, 0.33, -10],
-        [0, 0.33, -3],
-        [0, 0.33, 4],
-        [0, 0.33, 11],
-      ],
-      end: [
-        [-0.235, -0.11, -3],
-        [0.235, -0.1, 3],
-        [-0.235, 0.15, 2],
-        [0.235, 0.16, -3],
-      ],
-      s0: 0.7,
-      s1: 1,
-      vw,
-      vh,
-    };
   return {
     start: [
       [0, 0.36, -12],
@@ -262,22 +321,19 @@ function layout(): Layout {
     ],
     s0: 0.62,
     s1: 1,
-    vw,
-    vh,
+    vw: innerWidth,
+    vh: innerHeight,
   };
 }
 let lay = layout();
 const ease = (x: number) => 1 - Math.pow(1 - x, 3);
-const easeInOut = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 /** Progreso objetivo según el desplazamiento (0 = juntas, 1 = separadas). */
 function heroTarget(): number {
-  if (!hero) return 0;
+  if (!hero || reduced) return 1;
   const rect = hero.getBoundingClientRect();
-  const total = hero.offsetHeight - innerHeight;
-  // En celular se usa casi todo el recorrido (un deslizamiento avanza mucho); en escritorio, el 70 %.
-  const span = lay.vw < 760 ? 0.9 : 0.7;
-  const raw = Math.min(1, Math.max(0, -rect.top / (total * span)));
-  return reduced ? 1 : lay.vw < 760 ? easeInOut(raw) : ease(raw);
+  const total = (hero.offsetHeight - innerHeight) * 0.7;
+  if (total <= 0) return 1;
+  return ease(Math.min(1, Math.max(0, -rect.top / total)));
 }
 const heroLabels = heroCards.map((card) => card.querySelector<HTMLElement>('.hcard-label'));
 let heroShown = -1;
@@ -306,6 +362,20 @@ function paintHero(progress: number) {
     }
   });
 }
+/** Modo de una pantalla: sin estilos en línea, manda el CSS. */
+function clearHero() {
+  if (!hero) return;
+  if (heroLoop) cancelAnimationFrame(heroLoop);
+  heroLoop = 0;
+  heroShown = -1;
+  hero.style.removeProperty('--p');
+  hero.classList.remove('is-spread');
+  heroCards.forEach((card) => card.style.removeProperty('transform'));
+  heroLabels.forEach((label) => {
+    label?.style.removeProperty('opacity');
+    label?.style.removeProperty('transform');
+  });
+}
 // Suavizado: el progreso persigue al objetivo cuadro a cuadro, así la rueda del mouse (que avanza a
 // saltos) no se ve a tirones. Se detiene solo al llegar.
 let heroCurrent = 0;
@@ -319,6 +389,7 @@ function heroFrame() {
 }
 function updateHero(instant = false) {
   if (!hero) return;
+  if (compactHero.matches) return clearHero();
   if (instant || reduced) {
     heroCurrent = heroTarget();
     heroShown = -1;
@@ -327,6 +398,10 @@ function updateHero(instant = false) {
   }
   if (!heroLoop) heroLoop = requestAnimationFrame(heroFrame);
 }
+compactHero.addEventListener('change', () => {
+  lay = layout();
+  updateHero(true);
+});
 // En celular la barra del navegador aparece y desaparece al desplazarse y cambia el alto: solo se
 // recalcula si cambia el ancho (giro de pantalla), para que las tarjetas no salten.
 let lastWidth = innerWidth;
@@ -374,20 +449,52 @@ addEventListener(
     if (ticking) return;
     ticking = true;
     requestAnimationFrame(() => {
-      updateHero();
-      headerOnScroll();
-      ticking = false;
+      try {
+        if (heroLinked()) updateHero();
+        headerOnScroll();
+      } finally {
+        ticking = false;
+      }
     });
   },
   { passive: true },
 );
+/** Bloquea el scroll de la página con una clase en <html> (no estilos en body: Safari iOS movía la barra). */
+function lockScroll(lock: boolean) {
+  document.documentElement.classList.toggle('is-locked', lock);
+  syncKeyboard();
+}
+// Con el teclado abierto la barra inferior fija se iba a media pantalla en iPhone: se oculta mientras
+// haya un campo de texto con foco.
+const NOT_TYPING = new Set([
+  'checkbox',
+  'radio',
+  'button',
+  'submit',
+  'reset',
+  'range',
+  'color',
+  'file',
+  'image',
+]);
+const typing = (el: EventTarget | null) =>
+  el instanceof HTMLTextAreaElement ||
+  el instanceof HTMLSelectElement ||
+  (el instanceof HTMLInputElement && !NOT_TYPING.has(el.type)) ||
+  (el instanceof HTMLElement && el.isContentEditable);
+/** Se calcula siempre desde el foco real: un campo borrado (innerHTML) o un modal cerrado no deja la barra oculta. */
+function syncKeyboard() {
+  document.documentElement.classList.toggle('kb-open', typing(document.activeElement));
+}
+document.addEventListener('focusin', syncKeyboard);
+document.addEventListener('focusout', () => setTimeout(syncKeyboard, 0));
 const menuBtn = qs('#menu-btn');
 const drawer = qs('#drawer');
 function setDrawer(open: boolean) {
   if (!drawer || !menuBtn) return;
   drawer.hidden = !open;
   menuBtn.setAttribute('aria-expanded', String(open));
-  document.body.style.overflow = open ? 'hidden' : '';
+  lockScroll(open);
 }
 menuBtn?.addEventListener('click', () => setDrawer(Boolean(drawer?.hidden)));
 qsa('#drawer a').forEach((link) => link.addEventListener('click', () => setDrawer(false)));
@@ -453,6 +560,8 @@ function flyTo(from: Element | null) {
   const src = img.getBoundingClientRect();
   const dst = target.getBoundingClientRect();
   const ghost = img.cloneNode() as HTMLImageElement;
+  // D51: la foto vive en un <picture>; la copia usa la versión que ya bajó (no el respaldo).
+  if (img.currentSrc) ghost.src = img.currentSrc;
   ghost.className = 'fly';
   Object.assign(ghost.style, {
     left: `${src.left}px`,
@@ -477,8 +586,9 @@ function addToCart(id: string, combo: boolean, from: Element | null) {
     toast('El combo se agotó por hoy; puedes pedirla sola');
     return;
   }
-  // D40: una adición pregunta a cuál plato del pedido va.
-  if (info.get(id)?.addon && cart.some((line) => !line.parent && !info.get(line.productId)?.addon)) {
+  // D47: una adición necesita un plato en el pedido; D40: con plato, pregunta a cuál va (o aparte).
+  if (isAddon(id)) {
+    if (!hasDish(cart, isAddon)) return needDishFirst();
     openAddonPicker(id, from);
     return;
   }
@@ -488,6 +598,22 @@ function addToCart(id: string, combo: boolean, from: Element | null) {
   flyTo(from);
   toast(`${info.get(id)?.name ?? 'Producto'}${asCombo ? ' en combo' : ''} agregado 🔥`);
   if (!qs('#cart')?.hidden) renderCart();
+}
+
+/** D47: sin plato no se agrega la adición; se lleva a la carta (fuera de adiciones). */
+function needDishFirst() {
+  toast('Primero elige un plato; las adiciones van con él');
+  if (!qs('#cart')?.hidden) closeCart();
+  if (activeCat !== 'todo' && qs(`#carta-pills [data-cat="${activeCat}"]`)?.dataset.addons === '1') {
+    activeCat = 'todo';
+    qsa('#carta-pills [data-cat]').forEach((pill) =>
+      pill.setAttribute('aria-pressed', String(pill.dataset.cat === 'todo')),
+    );
+    filterMenu();
+  }
+  const carta = qs('#carta');
+  if (carta) carta.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' });
+  else location.href = '/#carta';
 }
 
 /* ---------- Adiciones: ¿a cuál plato? (D40) ---------- */
@@ -556,11 +682,9 @@ function applyCoupon(code: string, open: boolean) {
 }
 
 let returnFocus: HTMLElement | null = null;
-function lockScroll(lock: boolean) {
-  document.body.style.overflow = lock ? 'hidden' : '';
-}
 function openCart() {
   returnFocus = document.activeElement as HTMLElement | null;
+  void loadTurnstile(); // precarga: el token está listo al llegar a Confirmar
   renderCart();
   const sheet = qs('#cart');
   const backdrop = qs('#cart-backdrop');
@@ -647,6 +771,7 @@ qs('#cart-body')?.addEventListener('click', (event) => {
   const qtyBtn = target.closest<HTMLElement>('[data-q]');
   if (qtyBtn) {
     cart = changeQty(cart, qtyBtn.dataset.q ?? '', Number(qtyBtn.dataset.d), newKey);
+    dropOrphanAddons();
     saveCart();
     renderCart();
     return;
@@ -709,6 +834,154 @@ function closeModals() {
   returnFocus?.focus();
 }
 
+/* ---------- Cobertura verificable (D44) ----------
+   La ubicación se lee en el navegador y solo se compara aquí con los límites: no se guarda ni se envía.
+   Los polígonos se cargan al tocar "Usar mi ubicación" (import diferido). El servidor sigue validando la zona. */
+type LiveZone = ClientData['zones'][number];
+const geoSupported = 'geolocation' in navigator;
+let localitiesLoad: Promise<Locality[]> | null = null;
+function loadLocalities(): Promise<Locality[]> {
+  localitiesLoad ??= import('../data/bogota-localidades.json')
+    .then((mod) => asLocalities(mod.default))
+    .catch((error: unknown) => {
+      localitiesLoad = null; // el siguiente intento vuelve a cargarlos
+      throw error;
+    });
+  return localitiesLoad;
+}
+type GeoOutcome = Coverage<LiveZone> | { kind: 'problem'; problem: GeoProblem };
+function currentPosition(): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) =>
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      timeout: 15_000,
+      maximumAge: 60_000,
+    }),
+  );
+}
+async function locateCoverage(): Promise<GeoOutcome> {
+  if (!geoSupported) return { kind: 'problem', problem: 'unsupported' };
+  let position: GeolocationPosition;
+  try {
+    [position] = await Promise.all([currentPosition(), loadLocalities().catch(() => null)]);
+  } catch (error) {
+    const code = (error as GeolocationPositionError | null)?.code;
+    return { kind: 'problem', problem: code === 1 ? 'denied' : code === 3 ? 'timeout' : 'unavailable' };
+  }
+  const tolerance = toleranceFor(position.coords.accuracy);
+  if (tolerance === null) return { kind: 'problem', problem: 'imprecise' };
+  try {
+    const localities = await loadLocalities();
+    return coverageFor(
+      [position.coords.longitude, position.coords.latitude],
+      data.zones,
+      localities,
+      tolerance,
+    );
+  } catch {
+    return { kind: 'problem', problem: 'failed' };
+  }
+}
+/** Localidad elegida en la lista (no necesita polígonos). */
+function coverageForCode(code: string, name: string): Coverage<LiveZone> {
+  return coverageForLocality({ code, name, rings: [] }, data.zones);
+}
+function waAsk(localityName: string | null) {
+  if (!data.whatsapp) return '';
+  const text = localityName
+    ? `¡Hola ${data.restaurantName}! ¿Llegan a ${localityName}?`
+    : `¡Hola ${data.restaurantName}! ¿Llegan a mi barrio?`;
+  return ` <a href="https://wa.me/${esc(data.whatsapp)}?text=${encodeURIComponent(text)}" target="_blank" rel="noopener">Pregúntanos por WhatsApp</a>`;
+}
+/** `yesHtml` va tras un sí (enlace propio); `noText`, tras un "todavía no" y antes de WhatsApp. */
+function paintMessage(
+  el: HTMLElement,
+  outcome: GeoOutcome,
+  extra: { yesHtml?: string; noText?: string } = {},
+) {
+  const msg = coverageMessage(outcome, money);
+  el.classList.toggle('is-yes', msg.tone === 'yes');
+  el.classList.toggle('is-no', msg.tone === 'no');
+  el.innerHTML =
+    esc(msg.text) +
+    (msg.tone === 'yes' ? (extra.yesHtml ?? '') : '') +
+    (msg.tone === 'no' && extra.noText ? ` ${esc(extra.noText)}` : '') +
+    (msg.offerWhatsApp ? waAsk(msg.localities[0]?.name ?? null) : '');
+  pickOnMap(msg.localities.map((locality) => locality.code));
+}
+function pickOnMap(codes: string[]) {
+  qsa<SVGPathElement>('#cover-map [data-loc]').forEach((path) =>
+    path.classList.toggle('is-picked', codes.includes(path.dataset.loc ?? '')),
+  );
+}
+/** Pinta en vivo las localidades con zona activa y la lista de zonas (lo compilado sirve sin JS). */
+function syncCoverage() {
+  qsa<SVGPathElement>('#cover-map [data-loc]').forEach((path) =>
+    path.classList.toggle('is-on', zoneForLocality(path.dataset.loc ?? '', data.zones) !== null),
+  );
+  qsa<HTMLElement>('#cobertura [data-zone-id]').forEach((item) => {
+    const zone = data.zones.find((row) => row.id === item.dataset.zoneId);
+    item.classList.toggle('off', !zone);
+    const label = item.querySelector('span');
+    if (label) label.textContent = zone ? `Domicilio ${money(zone.fee)}` : 'Pronto';
+  });
+}
+async function withBusy(btn: HTMLButtonElement, run: () => Promise<void>) {
+  if (btn.disabled) return;
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Buscando…';
+  try {
+    await run();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+(function setupCoverCheck() {
+  const geoBtn = qs<HTMLButtonElement>('[data-geo="cover"]');
+  const select = qs<HTMLSelectElement>('#cover-loc');
+  const result = qs('#cover-result');
+  if (!result) return;
+  const orderLink = ' <a href="#carta">Pide ahora</a>';
+  if (geoBtn && geoSupported) geoBtn.hidden = false;
+  geoBtn?.addEventListener('click', () =>
+    withBusy(geoBtn, async () => {
+      const outcome = await locateCoverage();
+      if (select) select.value = outcome.kind === 'inside' ? outcome.locality.code : '';
+      paintMessage(result, outcome, { yesHtml: orderLink });
+    }),
+  );
+  select?.addEventListener('change', () => {
+    if (!select.value) {
+      result.textContent = '';
+      result.classList.remove('is-yes', 'is-no');
+      pickOnMap([]);
+      return;
+    }
+    const name = select.selectedOptions[0]?.textContent?.trim() ?? '';
+    paintMessage(result, coverageForCode(select.value, name), { yesHtml: orderLink });
+  });
+})();
+/** En el pedido: si la ubicación cae en una zona activa la deja elegida; si no, aviso junto al campo. */
+async function checkoutGeo(btn: HTMLButtonElement) {
+  await withBusy(btn, async () => {
+    const outcome = await locateCoverage();
+    // El formulario pudo redibujarse mientras tanto: se buscan los elementos de nuevo.
+    const select = qs<HTMLSelectElement>('#f-zone');
+    const note = qs('#f-geo');
+    if (!select || !note) return;
+    if (outcome.kind === 'inside' && outcome.covered && outcome.zone) {
+      select.value = outcome.zone.id;
+      fieldError('#f-zone', '');
+      form.zone = outcome.zone.id;
+      paintMessage(note, outcome);
+      return;
+    }
+    paintMessage(note, outcome, { noText: 'Si el pedido es para otra dirección, elige su localidad.' });
+  });
+}
+
 /* ---------- Pedido: datos → confirmar (un solo botón, D15) ---------- */
 interface Form {
   mode: Fulfillment;
@@ -736,7 +1009,9 @@ const form: Form = store.get<Form>('datos', {
   ok: false,
   promos: false,
 });
-let startedAt = 0;
+// Tiempo mínimo antiabuso (elapsed_ms ≥ 4 s en el servidor): se cuenta desde la carga de la página y no se
+// reinicia al reabrir Datos; con datos recordados se confirmaba en menos de 4 s y quedaba como robot.
+const startedAt = Date.now();
 function setStep(step: number) {
   qsa('#co-steps li').forEach((li, i) => li.classList.toggle('is-on', i <= step));
 }
@@ -745,13 +1020,12 @@ function openCheckout() {
   const modal = qs('#checkout');
   if (modal) modal.hidden = false;
   lockScroll(true);
-  startedAt = 0;
+  mountTurnstile('pedido', qs('#checkout .modal-card'));
   stepData();
 }
 const pickup = () => form.mode === 'recoger' && data.pickupEnabled;
 function stepData(errorMsg = '') {
   setStep(0);
-  if (!startedAt) startedAt = Date.now();
   const body = qs('#co-body');
   if (!body) return;
   if (!data.pickupEnabled) form.mode = 'domicilio';
@@ -781,7 +1055,8 @@ function stepData(errorMsg = '') {
           (zone) =>
             `<option value="${zone.id}" ${form.zone === zone.id ? 'selected' : ''}>${esc(zone.name)} · ${money(zone.fee)}</option>`,
         )
-        .join('')}</select><span class="error"></span></div>`
+        .join('')}</select><span class="error"></span></div>
+      <div class="field span-2 geo-row">${geoSupported ? '<button class="btn btn-soft btn-sm" type="button" data-geo="checkout">📍 Usar mi ubicación</button>' : ''}<p class="geo-note" id="f-geo" role="status" aria-live="polite"></p></div>`
       }
       <div class="field span-2"><label for="f-notes">${pickup() ? 'Nota para el pedido' : 'Indicaciones para el domiciliario'}</label><input class="input" id="f-notes" maxlength="200" placeholder="${pickup() ? 'Llego en 20 minutos, sin cebolla…' : 'Torre 2, portería, casa esquinera…'}" value="${esc(form.notes)}"></div>
       <fieldset class="field span-2 pay-fieldset"><legend class="cash-legend">¿Cómo pagas? <span class="req">*</span></legend>
@@ -795,7 +1070,6 @@ function stepData(errorMsg = '') {
       <input class="hp" tabindex="-1" autocomplete="off" id="f-hp" aria-hidden="true">
       <label class="check span-2"><input type="checkbox" id="f-ok" ${form.ok ? 'checked' : ''}> <span>Autorizo a ${esc(data.restaurantName)} a tratar mis datos para gestionar y entregar este pedido, según la <a href="/privacidad" target="_blank">política de tratamiento de datos</a>. <span class="req">*</span></span></label>
       <label class="check span-2"><input type="checkbox" id="f-promo" ${form.promos ? 'checked' : ''}> <span>Quiero recibir promociones por WhatsApp (opcional).</span></label>
-      <div id="turnstile" class="span-2"></div>
       <button class="btn btn-primary btn-lg btn-block span-2" type="submit">Continuar</button>
     </form>`;
   qsa<HTMLInputElement>('#co-form input[name="mode"]').forEach((radio) =>
@@ -811,11 +1085,12 @@ function stepData(errorMsg = '') {
       if (cash) cash.hidden = !asksChange(radio.value);
     }),
   );
+  const geoBtn = qs<HTMLButtonElement>('#co-form [data-geo="checkout"]');
+  geoBtn?.addEventListener('click', () => void checkoutGeo(geoBtn));
   qs('#co-form')?.addEventListener('submit', (event) => {
     event.preventDefault();
     submitData();
   });
-  renderTurnstile();
   qs<HTMLInputElement>('#f-name')?.focus();
 }
 function fieldError(sel: string, message: string) {
@@ -927,11 +1202,11 @@ async function placeOrder() {
   if (sending) return;
   sending = true;
   const btn = qs<HTMLButtonElement>('#send-order');
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = 'Enviando…';
-  }
+  if (btn) btn.disabled = true;
   try {
+    const turnstile = await turnstileToken('pedido', btn);
+    if (turnstile === null) return stepConfirm(turnstileFail());
+    if (btn) btn.textContent = 'Enviando…';
     const { status, body } = await callFunction<{
       ok: boolean;
       code?: string;
@@ -958,8 +1233,8 @@ async function placeOrder() {
       items: orderItems(cart),
       acepta_datos: form.ok,
       promos: form.promos,
-      elapsed_ms: Date.now() - startedAt,
-      turnstile: await turnstileToken(),
+      elapsed_ms: Math.min(Date.now() - startedAt, 86_400_000), // tope del esquema del servidor
+      turnstile,
       sitio_web: qs<HTMLInputElement>('#f-hp')?.value ?? '',
     });
     if (!body.ok || !body.code || !body.token) {
@@ -1009,37 +1284,117 @@ async function placeOrder() {
     stepConfirm('No pudimos conectarnos. Revisa tu internet e inténtalo de nuevo.');
   } finally {
     sending = false;
+    resetTurnstile('pedido');
   }
 }
 
-/* ---------- Cloudflare Turnstile (solo si hay clave; en local la función lo omite) ---------- */
+/* ---------- Cloudflare Turnstile (solo si hay clave; en local la función lo omite) ----------
+   Un widget por formulario (pedido, cupón, cotización), montado una sola vez en un contenedor que no se
+   redibuja. El token llega por callback a una compuerta; el envío lo espera con tope y se reinicia el
+   widget después de cada intento (el token es de un solo uso). */
 type TurnstileApi = {
   render: (el: HTMLElement, opts: Record<string, unknown>) => string;
-  getResponse: (id: string) => string;
+  reset: (id: string) => void;
 };
-let turnstileId = '';
-function renderTurnstile() {
-  if (!data.turnstileKey) return;
-  const mount = () => {
-    const api = (window as unknown as { turnstile?: TurnstileApi }).turnstile;
-    const el = qs('#turnstile');
-    if (api && el)
-      turnstileId = api.render(el, {
-        sitekey: data.turnstileKey,
-        appearance: 'interaction-only',
-        language: 'es',
-      });
-  };
-  if ((window as unknown as { turnstile?: TurnstileApi }).turnstile) return mount();
-  const script = document.createElement('script');
-  script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-  script.async = true;
-  script.onload = mount;
-  document.head.append(script);
+type TurnstileSlot = { host: HTMLElement; gate: TokenGate; id: string; spent: boolean };
+const TURNSTILE_WAIT_MS = 10_000;
+const TURNSTILE_FAIL = 'No pudimos verificar tu conexión, intenta de nuevo.';
+const TURNSTILE_BLOCKED =
+  'No pudimos cargar la verificación. Revisa tu conexión o desactiva el bloqueador y vuelve a intentar.';
+/** El script de Turnstile no cargó (red o bloqueador): mensaje distinto al de tiempo agotado. */
+let turnstileBlocked = false;
+const turnstileFail = () => (turnstileBlocked ? TURNSTILE_BLOCKED : TURNSTILE_FAIL);
+const turnstileSlots = new Map<string, TurnstileSlot>();
+let turnstileScript: Promise<TurnstileApi | null> | null = null;
+const turnstileApi = () => (window as unknown as { turnstile?: TurnstileApi }).turnstile ?? null;
+function loadTurnstile(): Promise<TurnstileApi | null> {
+  if (!data.turnstileKey) return Promise.resolve(null);
+  const ready = turnstileApi();
+  if (ready) return Promise.resolve(ready);
+  turnstileScript ??= new Promise((resolve) => {
+    const hint = document.createElement('link');
+    hint.rel = 'preconnect';
+    hint.href = 'https://challenges.cloudflare.com';
+    document.head.append(hint);
+    const script = document.createElement('script');
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    script.async = true;
+    script.onload = () => {
+      turnstileBlocked = false;
+      resolve(turnstileApi());
+    };
+    script.onerror = () => {
+      script.remove();
+      turnstileBlocked = true;
+      turnstileScript = null; // el siguiente intento vuelve a cargarlo
+      resolve(null);
+    };
+    document.head.append(script);
+  });
+  return turnstileScript;
 }
-async function turnstileToken(): Promise<string> {
-  const api = (window as unknown as { turnstile?: TurnstileApi }).turnstile;
-  return api && turnstileId ? api.getResponse(turnstileId) : '';
+async function renderSlot(slot: TurnstileSlot) {
+  if (slot.id) return;
+  const api = await loadTurnstile();
+  if (!api || slot.id || !slot.host.isConnected) return;
+  try {
+    slot.id = api.render(slot.host, {
+      sitekey: data.turnstileKey,
+      appearance: 'interaction-only',
+      language: 'es',
+      'refresh-expired': 'auto',
+      callback: (token: string) => slot.gate.set(token),
+      'expired-callback': () => slot.gate.clear(),
+      'error-callback': () => {
+        slot.gate.clear();
+        return true; // Turnstile reintenta solo
+      },
+    });
+  } catch {
+    slot.id = '';
+  }
+}
+/** Crea (una vez) el contenedor del widget dentro de `parent`, antes de `before`, y lo monta. */
+function mountTurnstile(key: string, parent: HTMLElement | null, before: Element | null = null) {
+  if (!data.turnstileKey || !parent) return;
+  let slot = turnstileSlots.get(key);
+  if (!slot || !slot.host.isConnected) {
+    const host = document.createElement('div');
+    host.className = 'ts-box span-2';
+    parent.insertBefore(host, before);
+    slot = { host, gate: createTokenGate(), id: '', spent: false };
+    turnstileSlots.set(key, slot);
+  }
+  void renderSlot(slot);
+}
+/** '' sin clave (local: la función no lo exige); null si no hubo token a tiempo (no se envía). */
+async function turnstileToken(key: string, btn: HTMLButtonElement | null): Promise<string | null> {
+  if (!data.turnstileKey) return '';
+  const slot = turnstileSlots.get(key);
+  if (!slot) return null;
+  if (!slot.gate.ready()) {
+    if (btn) btn.textContent = 'Verificando…';
+    // Si Turnstile pide interacción, que el reto quede a la vista.
+    slot.host.scrollIntoView({ block: 'nearest' });
+  }
+  void renderSlot(slot);
+  const token = await slot.gate.wait(TURNSTILE_WAIT_MS);
+  if (token) slot.spent = true;
+  return token;
+}
+/** Tras un envío (éxito o error) el token ya se gastó: widget nuevo. Sin envío no se toca el reto en curso. */
+function resetTurnstile(key: string) {
+  const slot = turnstileSlots.get(key);
+  if (!slot?.spent) return;
+  slot.spent = false;
+  slot.gate.clear();
+  const api = turnstileApi();
+  if (!api || !slot.id) return;
+  try {
+    api.reset(slot.id);
+  } catch {
+    /* el widget ya no existe: se vuelve a montar al abrir */
+  }
 }
 
 /* ---------- Seguimiento sin cuenta (D21) ---------- */
@@ -1105,20 +1460,27 @@ qs('#track-form')?.addEventListener('submit', (event) => {
 });
 
 /* ---------- Bienvenida: pantalla completa o aviso (D16) ---------- */
+/** D51: máximo una vez al día por navegador (día de Bogotá); `?intro=` sigue forzando. */
+const WELCOME_KEY = `${data.restaurant}:bienvenida`;
 function showWelcome() {
-  const params = new URLSearchParams(location.search);
-  const forced = params.get('intro');
-  const mode = forced === 'completa' || forced === 'aviso' || forced === 'ninguna' ? forced : data.introMode;
-  let seen = false;
+  const today = bogotaDay(new Date());
+  let lastSeen: string | null = null;
   try {
-    seen = sessionStorage.getItem(`${data.restaurant}:bienvenida`) === '1';
+    lastSeen = localStorage.getItem(WELCOME_KEY);
   } catch {
-    /* nada */
+    /* sin almacenamiento: se muestra */
   }
-  if (!data.introEvent || mode === 'ninguna' || (seen && !forced)) return;
+  const mode = welcomeToShow({
+    forced: forcedWelcome(new URLSearchParams(location.search).get('intro')),
+    configured: data.introMode,
+    hasEvent: Boolean(data.introEvent),
+    lastSeen,
+    today,
+  });
+  if (mode === 'ninguna') return;
   const markSeen = () => {
     try {
-      sessionStorage.setItem(`${data.restaurant}:bienvenida`, '1');
+      localStorage.setItem(WELCOME_KEY, today);
     } catch {
       /* nada */
     }
@@ -1126,13 +1488,17 @@ function showWelcome() {
   if (mode === 'aviso') return showPopup(markSeen);
   const el = qs('#intro');
   if (!el) return;
+  loadIntroPhoto(el);
   el.hidden = false;
   lockScroll(true);
+  // D50: la entrada de las fotos del inicio espera a que se cierre la bienvenida.
+  hero?.classList.add('is-held');
+  // D51: "Entrar al sitio" se ve desde el primer instante; la barra (0,8 s) es solo decoración.
   requestAnimationFrame(() => requestAnimationFrame(() => qs('#intro-bar')?.classList.add('is-full')));
-  setTimeout(() => el.classList.add('is-ready'), reduced ? 0 : 2400);
   const close = () => {
     el.classList.add('is-out');
     lockScroll(false);
+    if (hero?.classList.contains('is-held')) hero.classList.replace('is-held', 'is-replay');
     markSeen();
     setTimeout(() => (el.hidden = true), 900);
   };
@@ -1140,6 +1506,16 @@ function showWelcome() {
   addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !el.hidden) close();
   });
+}
+/** D51: la foto de la bienvenida solo se descarga si se va a mostrar, y con prioridad alta. */
+function loadIntroPhoto(el: HTMLElement) {
+  const img = qs<HTMLImageElement>('.intro-bg', el);
+  if (!img?.dataset.src) return;
+  img.fetchPriority = 'high';
+  qsa<HTMLSourceElement>('source[data-srcset]', el).forEach((source) => {
+    source.srcset = source.dataset.srcset ?? '';
+  });
+  img.src = img.dataset.src;
 }
 function showPopup(markSeen: () => void) {
   const el = qs('#popup');
@@ -1156,8 +1532,10 @@ function showPopup(markSeen: () => void) {
   addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !el.hidden) close();
   });
+  let popBusy = false;
   qs('#pop-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (popBusy) return;
     const name = val('#p-name');
     const phone = normalizeColombianMobile(val('#p-phone'));
     qs('#p-name')?.setAttribute('aria-invalid', String(name.length < 2));
@@ -1172,20 +1550,35 @@ function showPopup(markSeen: () => void) {
     if (name.length < 2 || !phone) return fail('Revisa nombre y celular.');
     if (!qs<HTMLInputElement>('#p-ok')?.checked)
       return fail('Necesitamos tu autorización para enviarte el cupón.');
-    const { body } = await callFunction<{ ok: boolean; coupon?: string; title?: string; error?: string }>(
-      'captar',
-      {
-        restaurant: data.restaurant,
-        event_id: el.dataset.event,
-        name,
-        phone,
-        acepta_datos: true,
-        turnstile: await turnstileToken(),
-        sitio_web: val('#p-hp'),
-      },
-    ).catch(() => ({
-      body: { ok: false, error: 'error' } as { ok: boolean; coupon?: string; title?: string; error?: string },
-    }));
+    const btn = qs<HTMLButtonElement>('#pop-form [type="submit"]');
+    const label = btn?.textContent ?? '';
+    popBusy = true;
+    if (btn) btn.disabled = true;
+    type Captar = { ok: boolean; coupon?: string; title?: string; error?: string };
+    let body: Captar;
+    try {
+      const turnstile = await turnstileToken('cupon', btn);
+      if (turnstile === null) return fail(turnstileFail());
+      if (btn) btn.textContent = 'Enviando…';
+      body = (
+        await callFunction<Captar>('captar', {
+          restaurant: data.restaurant,
+          event_id: el.dataset.event,
+          name,
+          phone,
+          acepta_datos: true,
+          turnstile,
+          sitio_web: val('#p-hp'),
+        }).catch(() => ({ body: { ok: false, error: 'error' } as Captar }))
+      ).body;
+    } finally {
+      popBusy = false;
+      resetTurnstile('cupon');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = label;
+      }
+    }
     if (!body.ok || !body.coupon) {
       return fail(
         body.error === 'ya_registrado'
@@ -1210,6 +1603,8 @@ function showPopup(markSeen: () => void) {
     () => {
       el.hidden = false;
       lockScroll(true);
+      const popForm = qs('#pop-form');
+      mountTurnstile('cupon', popForm, qs('[type="submit"]', popForm ?? document));
       (qs<HTMLInputElement>('#p-name') ?? qs<HTMLButtonElement>('.popup-x'))?.focus();
     },
     reduced ? 0 : 1200,
@@ -1222,10 +1617,14 @@ qs('#open-quote')?.addEventListener('click', () => {
   const modal = qs('#quote');
   if (modal) modal.hidden = false;
   lockScroll(true);
+  const quoteForm = qs('#quote-form');
+  mountTurnstile('cotizar', quoteForm, qs('[type="submit"]', quoteForm ?? document));
   qs<HTMLSelectElement>('#q-tipo')?.focus();
 });
+let quoteBusy = false;
 qs('#quote-form')?.addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (quoteBusy) return;
   const err = qs('#q-error');
   const fail = (message: string) => {
     if (err) {
@@ -1239,18 +1638,37 @@ qs('#quote-form')?.addEventListener('submit', async (event) => {
   qs('#q-cel')?.setAttribute('aria-invalid', String(!phone));
   if (!required.every((sel) => val(sel)) || !phone) return fail('Completa los campos marcados.');
   if (!qs<HTMLInputElement>('#q-ok')?.checked) return fail('Necesitamos tu autorización para responderte.');
-  const { status, body } = await callFunction<{ ok: boolean; error?: string }>('cotizar', {
-    restaurant: data.restaurant,
-    kind: val('#q-tipo'),
-    name: val('#q-nombre'),
-    phone,
-    event_date: val('#q-fecha'),
-    guests: val('#q-personas'),
-    message: val('#q-msg'),
-    acepta_datos: true,
-    turnstile: await turnstileToken(),
-    sitio_web: val('#q-hp'),
-  }).catch(() => ({ status: 0, body: { ok: false } as { ok: boolean; error?: string } }));
+  const btn = qs<HTMLButtonElement>('#quote-form [type="submit"]');
+  const label = btn?.textContent ?? '';
+  quoteBusy = true;
+  if (btn) btn.disabled = true;
+  type Cotizar = { status: number; body: { ok: boolean; error?: string } };
+  let result: Cotizar;
+  try {
+    const turnstile = await turnstileToken('cotizar', btn);
+    if (turnstile === null) return fail(turnstileFail());
+    if (btn) btn.textContent = 'Enviando…';
+    result = await callFunction<{ ok: boolean; error?: string }>('cotizar', {
+      restaurant: data.restaurant,
+      kind: val('#q-tipo'),
+      name: val('#q-nombre'),
+      phone,
+      event_date: val('#q-fecha'),
+      guests: val('#q-personas'),
+      message: val('#q-msg'),
+      acepta_datos: true,
+      turnstile,
+      sitio_web: val('#q-hp'),
+    }).catch((): Cotizar => ({ status: 0, body: { ok: false } }));
+  } finally {
+    quoteBusy = false;
+    resetTurnstile('cotizar');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  }
+  const { status, body } = result;
   if (!body.ok) {
     return fail(
       body.error === 'demasiados_intentos'
@@ -1265,19 +1683,6 @@ qs('#quote-form')?.addEventListener('submit', async (event) => {
   closeModals();
   toast('Solicitud enviada. Te escribimos en menos de 24 h ✔');
 });
-
-/* ---------- Aparición al hacer scroll ---------- */
-const io = new IntersectionObserver(
-  (entries) =>
-    entries.forEach((entry) => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('is-in');
-        io.unobserve(entry.target);
-      }
-    }),
-  { threshold: 0.12 },
-);
-qsa('.reveal').forEach((el) => io.observe(el));
 
 updateHero(true);
 syncCount();

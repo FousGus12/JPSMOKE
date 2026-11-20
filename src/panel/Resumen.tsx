@@ -86,9 +86,9 @@ export function Resumen({
         </div>
       ) : null}
       {isAdmin && summary?.blocked_week ? (
-        <div className="note">
-          🛡️ <b>{summary.blocked_week} pedidos falsos frenados</b> en los últimos 7 días.
-        </div>
+        <a className="note note-link" href="#seguridad">
+          🛡️ <b>{summary.blocked_week} pedidos falsos frenados</b> en los últimos 7 días. Ver detalle →
+        </a>
       ) : null}
     </>
   );

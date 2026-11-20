@@ -1,5 +1,7 @@
 ---
 import Price from './Price.astro';
+import Photo from './Photo.astro';
+import { PHOTO } from '../../lib/images';
 import type { Product } from '../../lib/content';
 
 interface Props {
@@ -10,7 +12,7 @@ const { product } = Astro.props;
 
 <article class:list={['pcard', { 'sold-out': !product.available }]} data-product={product.id}>
   <div class="pcard-img">
-    {product.image && <img src={product.image} alt={product.name} loading="lazy" width="380" height="380" />}
+    <Photo src={product.image} preset={PHOTO.card} alt={product.name} width={380} height={380} />
     {product.badge && <span class="tag tag-accent">{product.badge}</span>}
   </div>
   <div class="pcard-body">

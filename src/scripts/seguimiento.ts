@@ -2,6 +2,7 @@
 import type { ClientData } from '../lib/content';
 import { formatCop as money } from '../core/money';
 import { nestItems } from '../core/orders';
+import { artKey, trackArt } from './seguimiento-arte';
 import { ORDER_STEPS, stepIndex, stepName, type Fulfillment, type OrderStatus } from '../core/tracking';
 
 interface PublicOrder {
@@ -11,7 +12,7 @@ interface PublicOrder {
   created_at: string;
   cancel_reason: string | null;
   address: string;
-  barrio: string;
+  barrio: string | null;
   payment: string;
   subtotal: number;
   discount: number;
@@ -71,6 +72,7 @@ try {
 }
 
 let lastStatus = '';
+let lastSig = ''; // contenido ya pintado: si no cambia, no se repinta (la animación no se reinicia)
 function toast(message: string) {
   const el = document.createElement('div');
   el.className = 'toast';
@@ -81,6 +83,7 @@ function toast(message: string) {
 
 function notFound(message: string) {
   if (!main) return;
+  lastSig = '';
   main.innerHTML = `<section class="track-hero"><h1 class="display track-status">No encontrado</h1><p>${esc(message)}</p>
     <a class="btn btn-primary" href="/" data-open-track>Buscar con código y celular</a></section>`;
 }
@@ -88,6 +91,7 @@ function notFound(message: string) {
 /** Enlace con solo el código (el que llega por WhatsApp): pide los últimos 4 dígitos del celular. */
 function askLast4(message = '') {
   if (!main) return;
+  lastSig = '';
   main.innerHTML = `<section class="track-hero"><p class="code">Pedido ${esc(code)}</p><h1 class="display track-status">Tu pedido</h1>
     <p>Para verlo, escribe los últimos 4 dígitos del celular con el que pediste.</p>
     <form class="form-grid" id="last4-form" novalidate>
@@ -143,6 +147,9 @@ async function load() {
 
 function render(order: PublicOrder) {
   if (!main) return;
+  const sig = JSON.stringify(order);
+  if (sig === lastSig) return;
+  lastSig = sig;
   if (lastStatus && lastStatus !== order.status)
     toast(`Tu pedido ahora está: ${stepName(order.status, order.fulfillment)}`);
   lastStatus = order.status;
@@ -153,12 +160,17 @@ function render(order: PublicOrder) {
   const label = stepName(order.status, order.fulfillment);
   document.title = `${label} · ${order.code}`;
   main.classList.toggle('cancelled', cancelled);
+  const key = artKey(order.status, order.fulfillment);
+  const prevArt = key ? main.querySelector<HTMLElement>('.track-art') : null;
   main.innerHTML = `
     <section class="track-hero">
-      <p class="code">Pedido ${esc(order.code)}</p>
-      <h1 class="display track-status">${esc(label)}</h1>
-      <p>${cancelled ? `Motivo: ${esc(order.cancel_reason ?? 'sin detalle')}. Si fue un error, escríbenos.` : esc((pickup && PICKUP_HINT[order.status]) || HINT[order.status] || '')}</p>
-      ${!cancelled && !pickup && order.status !== 'entregado' ? `<p><b>Entrega estimada:</b> ${esc(order.eta)} desde las ${time(order.created_at)}</p>` : ''}
+      ${key ? `<div class="track-art" data-key="${key}" aria-hidden="true">${trackArt(order.status, order.fulfillment)}</div>` : ''}
+      <div class="track-copy">
+        <p class="code">Pedido ${esc(order.code)}</p>
+        <h1 class="display track-status">${esc(label)}</h1>
+        <p>${cancelled ? 'Tu pedido fue cancelado. Si tienes dudas, escríbenos por WhatsApp.' : esc((pickup && PICKUP_HINT[order.status]) || HINT[order.status] || '')}</p>
+        ${!cancelled && !pickup && order.status !== 'entregado' ? `<p><b>Entrega estimada:</b> ${esc(order.eta)} desde las ${time(order.created_at)}</p>` : ''}
+      </div>
     </section>
     ${
       cancelled
@@ -180,8 +192,10 @@ function render(order: PublicOrder) {
       ${order.discount ? `<div class="muted"><span>Cupón ${esc(order.coupon)}</span><span>−${money(order.discount)}</span></div>` : ''}
       ${order.gift ? `<div class="muted"><span>🎁 ${esc(order.gift)}</span><span>$0</span></div>` : ''}
       <div class="tot"><span>Total</span><span>${money(order.total)}</span></div></div>
-      <p class="muted">${pickup ? esc(order.address) : `${esc(order.address)}, ${esc(order.barrio)}`} · Pago: ${esc(order.payment)}</p></section>
+      <p class="muted">${esc(pickup ? order.address : [order.address, order.barrio].filter((part) => part?.trim()).join(', '))} · Pago: ${esc(order.payment)}</p></section>
     <p class="track-note">${token ? 'Guarda este enlace: es único para tu pedido. ' : ''}Se actualiza solo, no tienes que recargar.</p>`;
+  // Mismo dibujo que antes: se conserva el nodo para que la animación siga donde iba.
+  if (prevArt && prevArt.dataset.key === key) main.querySelector('.track-art')?.replaceWith(prevArt);
 }
 
 void load();

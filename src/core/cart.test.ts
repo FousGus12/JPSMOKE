@@ -5,6 +5,8 @@ import {
   cartTotals,
   changeQty,
   comboUpsell,
+  dropAddonsWithoutDish,
+  hasDish,
   normalizeCart,
   orderItems,
   type CartCoupon,
@@ -145,5 +147,45 @@ describe('adiciones ligadas a un plato (D40)', () => {
       { product_id: 'huevo', qty: 1, combo: false, key: 'k3', parent: 'k1' },
       { product_id: 'papas', qty: 1, combo: false },
     ]);
+  });
+});
+
+describe('adiciones solo con plato (D47)', () => {
+  const addons = new Set(['huevo', 'tocineta']);
+  const isAddon = (id: string) => addons.has(id);
+  it('sin plato no hay plato', () => {
+    expect(hasDish([], isAddon)).toBe(false);
+    expect(hasDish([{ productId: 'huevo', qty: 1, combo: false }], isAddon)).toBe(false);
+    expect(hasDish([{ productId: 'b1', qty: 1, combo: false }], isAddon)).toBe(true);
+  });
+  it('con plato no se toca nada', () => {
+    const lines = [
+      { key: 'p', productId: 'b1', qty: 1, combo: false },
+      { key: 'a', productId: 'huevo', qty: 1, combo: false, parent: 'p' },
+      { key: 'x', productId: 'tocineta', qty: 2, combo: false },
+    ];
+    expect(dropAddonsWithoutDish(lines, isAddon)).toEqual({ lines, removed: 0 });
+  });
+  it('al quitar el último plato se van las adiciones aparte y ligadas', () => {
+    let seq = 0;
+    const key = () => `k${++seq}`;
+    let lines = addLine([], 'b1', false, key);
+    lines = attachAddon(lines, 'huevo', 'k1', key);
+    lines = attachAddon(lines, 'tocineta', null, key);
+    lines = changeQty(lines, 'k1', -1, key);
+    expect(lines).toHaveLength(1); // la aparte sigue tras changeQty
+    const result = dropAddonsWithoutDish(lines, isAddon);
+    expect(result.lines).toEqual([]);
+    expect(result.removed).toBe(1);
+  });
+  it('carrito guardado solo con adiciones queda vacío', () => {
+    const result = dropAddonsWithoutDish(
+      [
+        { key: 'a', productId: 'huevo', qty: 2, combo: false },
+        { key: 'b', productId: 'tocineta', qty: 1, combo: false },
+      ],
+      isAddon,
+    );
+    expect(result).toEqual({ lines: [], removed: 3 });
   });
 });

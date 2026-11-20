@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { csvCell, niceMax, percentChange, toCsv, weeklyText } from './sales';
+import { csvCell, niceMax, percentChange, toCsv, voidedAfterClose, weeklyText } from './sales';
 
 describe('ventas', () => {
   it('cambio porcentual y sin inventar cuando antes fue cero', () => {
@@ -40,5 +40,19 @@ describe('ventas', () => {
     expect(text).toContain('Ventas: $1.200.000 (▲ 20% vs. la semana anterior)');
     expect(text).toContain('Producto estrella: La Ahumadora');
     expect(text).toContain('viernes a las 7 p. m.');
+  });
+});
+
+describe('anulados después del cierre (D42)', () => {
+  it('sin el campo (base vieja) queda vacío', () => {
+    expect(voidedAfterClose(undefined)).toEqual({ rows: [], total: 0 });
+    expect(voidedAfterClose(null).rows).toEqual([]);
+  });
+  it('suma lo anulado', () => {
+    const list = [
+      { code: 'JP-0001', total: 30000, day: '2026-11-18', reason: 'Pedido falso' },
+      { code: 'JP-0002', total: 12000, day: '2026-11-19', reason: null },
+    ];
+    expect(voidedAfterClose(list)).toEqual({ rows: list, total: 42000 });
   });
 });

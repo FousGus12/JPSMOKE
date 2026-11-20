@@ -32,11 +32,33 @@ test('un pedido web encola confirmación y aviso; el panel los muestra', async (
   await goTo(page, 'WhatsApp');
   await expect(page.getByTestId(`wa-pedido_recibido-${code}`)).toBeVisible();
   await expect(page.getByText(/Recibimos tu pedido JP-0042/)).toBeVisible(); // vista previa de la plantilla
-  await page.getByText('Apagado').click();
+  await page.locator('label.mode', { hasText: 'Apagado' }).click();
   await expect(page.getByText('WhatsApp: Apagado')).toBeVisible();
   expect(sql(`select whatsapp_mode from public.restaurant_settings where restaurant_id = '${RID}'`)).toBe(
     'manual',
   );
+});
+
+test('la pantalla de WhatsApp muestra las 5 plantillas con datos de ejemplo', async ({ page }) => {
+  await loginAdmin(page);
+  await goTo(page, 'WhatsApp');
+  await expect(page.getByRole('heading', { name: 'Así se ven' })).toBeVisible();
+  const previews = page.locator('.wa-preview');
+  await expect(previews).toHaveCount(5);
+  await expect(previews.locator('.wa-tpl')).toHaveText([
+    'pedido_recibido',
+    'aviso_negocio',
+    'en_camino',
+    'informe_semanal',
+    'stock_bajo',
+  ]);
+  await expect(previews.nth(0)).toContainText('Recibimos tu pedido JP-0042');
+  await expect(previews.nth(4)).toContainText('llegó al mínimo');
+  for (const text of await previews.locator('.quote-msg').allTextContents())
+    expect(text).not.toContain('Sin datos suficientes');
+  // Lenguaje de dueño: los tres modos con su explicación, sin jerga de la API.
+  await expect(page.locator('label.mode')).toHaveCount(3);
+  await expect(page.getByRole('heading', { name: '¿Cuánto cuesta?' })).toBeVisible();
 });
 
 test('el enlace del mensaje (solo código) pide los 4 dígitos y muestra el pedido', async ({ page }) => {

@@ -39,6 +39,73 @@ export const CANCEL_REASONS = [
   'El cliente canceló',
 ];
 
+/** Motivos al anular (D42). El texto lo lee la base: "Pedido de prueba…" marca is_test y "Pedido falso…" bloquea el celular. */
+export const VOID_REASONS = ['Pedido de prueba', 'Pedido falso', 'El cliente canceló', 'Otro'] as const;
+export type VoidReason = (typeof VOID_REASONS)[number];
+
+export type StaffRole = 'admin' | 'operador';
+
+export interface OrderActions {
+  /** Siguiente estado (null si está cerrado). */
+  next: { status: OrderStatus; label: string } | null;
+  /** Operador (o rol aún sin cargar): cancelar con la lista de siempre, solo en estados abiertos. */
+  canCancel: boolean;
+  /** Admin: anular en cualquier estado no cancelado, también entregado (D42). */
+  canVoid: boolean;
+}
+
+/** Qué puede hacer cada rol con un pedido. La base valida lo mismo en set_order_status. */
+export function orderActions(
+  status: OrderStatus,
+  role: StaffRole | null,
+  fulfillment: 'domicilio' | 'recoger' = 'domicilio',
+): OrderActions {
+  const open = status !== 'entregado' && status !== 'cancelado';
+  return {
+    next: nextStep(status, fulfillment),
+    canCancel: role !== 'admin' && open,
+    canVoid: role === 'admin' && status !== 'cancelado',
+  };
+}
+
+/**
+ * Motivo que se manda a la base al anular. "Otro" exige texto (3 a 200 caracteres); en los demás el
+ * detalle es opcional y va después del motivo para no romper el prefijo. null si falta algo.
+ */
+export function voidReasonText(choice: VoidReason | '', detail: string): string | null {
+  const extra = detail.trim().replace(/\s+/g, ' ');
+  if (!choice) return null;
+  if (choice === 'Otro') return extra.length >= 3 ? extra.slice(0, 200) : null;
+  return (extra ? `${choice} · ${extra}` : choice).slice(0, 200);
+}
+
+/** Error de set_order_status en texto para el equipo. */
+export function statusErrorText(error: { code?: string | null; message?: string | null }): string {
+  const message = (error.message ?? '').toLowerCase();
+  if (error.code === '42501')
+    return message.includes('admin')
+      ? 'Solo el admin puede anular un pedido entregado.'
+      : 'No tienes permiso para cambiar este pedido.';
+  if (message.includes('ya está cancelado')) return 'Ese pedido ya estaba cancelado.';
+  if (message.includes('ya está cerrado')) return 'Ese pedido ya está cerrado.';
+  if (message.includes('motivo')) return 'Escribe el motivo (mínimo 3 letras).';
+  if (message.includes('no sigue')) return 'Ese pedido ya cambió de estado. Revisa el tablero.';
+  return 'No se pudo cambiar el estado. Revisa la conexión e intenta de nuevo.';
+}
+
+/** Los entregados de hoy se ven compactos (código y total) hasta tocarlos (D42). */
+export function isCompact(status: OrderStatus): boolean {
+  return status === 'entregado';
+}
+
+/** Abre o cierra una tarjeta compacta sin mutar el conjunto. */
+export function toggleOpen(open: ReadonlySet<string>, id: string): Set<string> {
+  const next = new Set(open);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return next;
+}
+
 /** Siguiente estado y el texto del botón; null si el pedido ya está cerrado. Quien recoge no se despacha (D33). */
 export function nextStep(
   status: OrderStatus,
@@ -129,4 +196,79 @@ export function nestItems<T extends NestableItem>(items: T[]): Array<T & { isAdd
       for (const child of sorted) if (child.parent === item.id) out.push({ ...child, isAddon: true });
   }
   return out;
+}
+
+/* Tablero arrastrable (D53). La base exige lo mismo en set_order_status (compara la posición del enum). */
+
+const FLOW: OrderStatus[] = ['nuevo', 'confirmado', 'en_cocina', 'en_camino', 'entregado'];
+
+/** Se puede soltar un pedido de `from` en `to`: solo hacia adelante (se permite saltar), nunca a cancelado ni desde un estado cerrado. */
+export function canDrop(from: OrderStatus, to: OrderStatus): boolean {
+  if (to === 'cancelado' || from === 'entregado' || from === 'cancelado') return false;
+  return FLOW.indexOf(to) > FLOW.indexOf(from);
+}
+
+/** Se puede empezar a arrastrar desde este estado. */
+export function canDrag(status: OrderStatus): boolean {
+  return status !== 'entregado' && status !== 'cancelado';
+}
+
+/** Aviso al soltar en una columna no válida; null si se puede (o si es la misma columna: no pasa nada). */
+export function dropRejection(from: OrderStatus, to: OrderStatus): string | null {
+  if (from === to || canDrop(from, to)) return null;
+  if (!canDrag(from)) return `Un pedido ${STATUS_LABEL[from].toLowerCase()} ya no se mueve.`;
+  if (to === 'cancelado') return 'Para cancelar abre el pedido y usa el botón con motivo.';
+  return `Solo se avanza: no puede volver a ${STATUS_LABEL[to]}.`;
+}
+
+/** Soltar en Entregado o saltarse estados pide confirmación; un paso a la vez no. */
+export function needsDropConfirm(from: OrderStatus, to: OrderStatus): boolean {
+  if (!canDrop(from, to)) return false;
+  return to === 'entregado' || FLOW.indexOf(to) - FLOW.indexOf(from) > 1;
+}
+
+/** Pregunta de la confirmación al soltar. */
+export function dropConfirmText(code: string, from: OrderStatus, to: OrderStatus): string {
+  if (to === 'entregado') return `¿Marcar ${code} como entregado? El operador no puede deshacerlo.`;
+  return `¿Pasar ${code} de ${STATUS_LABEL[from]} a ${STATUS_LABEL[to]}? Se salta pasos del flujo.`;
+}
+
+/** Movimiento optimista: vale mientras el pedido siga en `from` (cuando llega el dato real, caduca solo). */
+export interface PendingMove {
+  from: OrderStatus;
+  to: OrderStatus;
+}
+
+/** Aplica los movimientos pendientes sin mutar la lista. */
+export function applyMoves<T extends { id: string; status: OrderStatus }>(
+  orders: T[],
+  moves: ReadonlyMap<string, PendingMove>,
+): T[] {
+  if (moves.size === 0) return orders;
+  return orders.map((order) => {
+    const move = moves.get(order.id);
+    return move && order.status === move.from ? { ...order, status: move.to } : order;
+  });
+}
+
+/** Movimientos que ya no aplican porque el pedido cambió o desapareció de la lista. */
+export function staleMoves(
+  orders: ReadonlyArray<{ id: string; status: OrderStatus }>,
+  moves: ReadonlyMap<string, PendingMove>,
+): string[] {
+  const byId = new Map(orders.map((order) => [order.id, order.status]));
+  return [...moves].filter(([id, move]) => byId.get(id) !== move.from).map(([id]) => id);
+}
+
+/** Desplazamiento por cuadro al arrastrar cerca del borde: negativo a la izquierda, 0 lejos del borde. */
+export function edgeScroll(x: number, left: number, right: number, edge = 56, max = 18): number {
+  if (right - left <= edge * 2) return 0;
+  if (x < left + edge) return -Math.round(max * Math.min(1, (left + edge - x) / edge));
+  if (x > right - edge) return Math.round(max * Math.min(1, (x - (right - edge)) / edge));
+  return 0;
+}
+
+/** El gesto con mouse se vuelve arrastre al pasar el umbral (6 px), para no confundirlo con un clic. */
+export function passedThreshold(dx: number, dy: number, threshold = 6): boolean {
+  return dx * dx + dy * dy > threshold * threshold;
 }

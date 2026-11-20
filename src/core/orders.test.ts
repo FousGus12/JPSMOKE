@@ -1,12 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyMoves,
+  canDrag,
+  canDrop,
   customerWhatsApp,
+  dropConfirmText,
+  dropRejection,
+  needsDropConfirm,
+  edgeScroll,
+  passedThreshold,
+  staleMoves,
   formatPhone,
   groupBoard,
+  isCompact,
   isLate,
   nestItems,
   nextStep,
+  orderActions,
   startOfBogotaDay,
+  statusErrorText,
+  toggleOpen,
+  voidReasonText,
+  type OrderStatus,
+  type PendingMove,
 } from './orders';
 
 const NOW = Date.parse('2026-11-01T20:00:00Z'); // 3:00 p. m. en Bogotá
@@ -68,5 +84,130 @@ describe('nestItems (D40)', () => {
   it('pedidos viejos sin id ni padre quedan iguales', () => {
     const old: Array<{ name: string; id?: string }> = [{ name: 'A' }, { name: 'B' }];
     expect(nestItems(old).map((item) => item.name)).toEqual(['A', 'B']);
+  });
+});
+
+describe('anular pedidos (D42)', () => {
+  it('admin anula en cualquier estado no cancelado, también entregado', () => {
+    for (const status of ['nuevo', 'confirmado', 'en_cocina', 'en_camino', 'entregado'] as const)
+      expect(orderActions(status, 'admin').canVoid).toBe(true);
+    expect(orderActions('cancelado', 'admin').canVoid).toBe(false);
+    expect(orderActions('entregado', 'admin').canCancel).toBe(false);
+  });
+  it('operador solo cancela en estados abiertos y nunca anula', () => {
+    expect(orderActions('en_camino', 'operador')).toMatchObject({ canCancel: true, canVoid: false });
+    expect(orderActions('entregado', 'operador')).toMatchObject({ canCancel: false, canVoid: false });
+    expect(orderActions('cancelado', 'operador').canCancel).toBe(false);
+  });
+  it('sin rol conocido se puede cancelar como hoy, pero no anular', () => {
+    expect(orderActions('nuevo', null)).toMatchObject({ canCancel: true, canVoid: false });
+    expect(orderActions('entregado', null)).toMatchObject({ canCancel: false, canVoid: false });
+    expect(orderActions('nuevo', null).next?.status).toBe('confirmado');
+  });
+  it('motivo: conserva el prefijo que lee la base y exige texto en "Otro"', () => {
+    expect(voidReasonText('', 'algo')).toBeNull();
+    expect(voidReasonText('Pedido de prueba', '')).toBe('Pedido de prueba');
+    expect(voidReasonText('Pedido falso', '  llamó  dos veces ')).toBe('Pedido falso · llamó dos veces');
+    expect(voidReasonText('Otro', ' a ')).toBeNull();
+    expect(voidReasonText('Otro', 'Se repitió el pedido')).toBe('Se repitió el pedido');
+    expect(voidReasonText('Otro', 'x'.repeat(300))).toHaveLength(200);
+    expect(voidReasonText('Pedido de prueba', 'y'.repeat(300))?.startsWith('Pedido de prueba · ')).toBe(true);
+  });
+  it('errores de la base en texto legible', () => {
+    expect(statusErrorText({ code: '42501', message: 'Solo el admin anula un pedido entregado' })).toMatch(
+      /Solo el admin/,
+    );
+    expect(statusErrorText({ code: '42501', message: 'Sin permiso' })).toMatch(/permiso/);
+    expect(statusErrorText({ code: '22023', message: 'El pedido ya está cancelado' })).toMatch(/ya estaba/);
+    expect(statusErrorText({ code: '22023', message: 'El pedido ya está cerrado' })).toMatch(/cerrado/);
+    expect(statusErrorText({ code: '22023', message: 'Cancelar exige un motivo' })).toMatch(/motivo/);
+    expect(statusErrorText({ code: '22023', message: 'Ese estado no sigue al actual' })).toMatch(/cambió/);
+    expect(statusErrorText({ message: null })).toMatch(/No se pudo/);
+  });
+  it('entregados compactos y tarjetas que se abren y cierran', () => {
+    expect(isCompact('entregado')).toBe(true);
+    expect(isCompact('en_camino')).toBe(false);
+    const first = new Set<string>();
+    const opened = toggleOpen(first, 'a');
+    expect([...opened]).toEqual(['a']);
+    expect(first.size).toBe(0);
+    expect(toggleOpen(opened, 'a').size).toBe(0);
+  });
+});
+
+describe('tablero arrastrable (D53)', () => {
+  const ALL: OrderStatus[] = ['nuevo', 'confirmado', 'en_cocina', 'en_camino', 'entregado', 'cancelado'];
+
+  it('solo hacia adelante y se pueden saltar estados', () => {
+    expect(canDrop('nuevo', 'confirmado')).toBe(true);
+    expect(canDrop('nuevo', 'entregado')).toBe(true);
+    expect(canDrop('confirmado', 'en_camino')).toBe(true);
+    expect(canDrop('en_camino', 'confirmado')).toBe(false);
+    expect(canDrop('en_cocina', 'en_cocina')).toBe(false);
+  });
+
+  it('nunca a cancelado ni desde entregado o cancelado', () => {
+    for (const from of ALL) expect(canDrop(from, 'cancelado')).toBe(false);
+    for (const to of ALL) {
+      expect(canDrop('entregado', to)).toBe(false);
+      expect(canDrop('cancelado', to)).toBe(false);
+    }
+    expect(canDrag('entregado')).toBe(false);
+    expect(canDrag('cancelado')).toBe(false);
+    expect(canDrag('en_camino')).toBe(true);
+  });
+
+  it('aviso al soltar donde no se puede; misma columna sin aviso', () => {
+    expect(dropRejection('en_cocina', 'en_cocina')).toBeNull();
+    expect(dropRejection('nuevo', 'en_camino')).toBeNull();
+    expect(dropRejection('en_camino', 'nuevo')).toBe('Solo se avanza: no puede volver a Nuevo.');
+    expect(dropRejection('entregado', 'nuevo')).toMatch(/ya no se mueve/);
+    expect(dropRejection('nuevo', 'cancelado')).toMatch(/motivo/);
+  });
+
+  it('confirma al soltar en Entregado o al saltarse estados; un paso no', () => {
+    expect(needsDropConfirm('nuevo', 'confirmado')).toBe(false);
+    expect(needsDropConfirm('en_cocina', 'en_camino')).toBe(false);
+    expect(needsDropConfirm('en_camino', 'entregado')).toBe(true);
+    expect(needsDropConfirm('nuevo', 'en_cocina')).toBe(true);
+    expect(needsDropConfirm('nuevo', 'entregado')).toBe(true);
+    expect(needsDropConfirm('en_camino', 'nuevo')).toBe(false);
+    expect(needsDropConfirm('entregado', 'entregado')).toBe(false);
+    expect(dropConfirmText('JP-0007', 'en_camino', 'entregado')).toBe(
+      '¿Marcar JP-0007 como entregado? El operador no puede deshacerlo.',
+    );
+    expect(dropConfirmText('JP-0007', 'nuevo', 'en_camino')).toMatch(/de Nuevo a En camino/);
+  });
+
+  it('movimiento optimista: aplica mientras siga en el estado de origen', () => {
+    const orders = [
+      { id: 'a', status: 'nuevo' as OrderStatus },
+      { id: 'b', status: 'en_cocina' as OrderStatus },
+    ];
+    const moves = new Map<string, PendingMove>([['a', { from: 'nuevo', to: 'en_cocina' }]]);
+    expect(applyMoves(orders, moves).map((order) => order.status)).toEqual(['en_cocina', 'en_cocina']);
+    expect(orders[0]?.status).toBe('nuevo');
+    expect(applyMoves(orders, new Map())).toBe(orders);
+    expect(staleMoves(orders, moves)).toEqual([]);
+    // Llegó el dato real (u otro cambio en vivo): el movimiento caduca.
+    const arrived = [{ id: 'a', status: 'en_cocina' as OrderStatus }];
+    expect(applyMoves(arrived, moves)[0]?.status).toBe('en_cocina');
+    expect(staleMoves(arrived, moves)).toEqual(['a']);
+    expect(staleMoves([], moves)).toEqual(['a']);
+  });
+
+  it('autoscroll solo cerca del borde y con tope', () => {
+    expect(edgeScroll(500, 0, 1000)).toBe(0);
+    expect(edgeScroll(0, 0, 1000)).toBe(-18);
+    expect(edgeScroll(28, 0, 1000)).toBe(-9);
+    expect(edgeScroll(1000, 0, 1000)).toBe(18);
+    expect(edgeScroll(1200, 0, 1000)).toBe(18);
+    expect(edgeScroll(10, 0, 100)).toBe(0);
+  });
+
+  it('umbral de 6 px para no confundir un clic con un arrastre', () => {
+    expect(passedThreshold(3, 4)).toBe(false);
+    expect(passedThreshold(6, 0)).toBe(false);
+    expect(passedThreshold(5, 4)).toBe(true);
   });
 });

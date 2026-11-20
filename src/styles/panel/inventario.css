@@ -1,0 +1,148 @@
+/* JP Smoke · panel · inventario (v0.18). Solo clases: la CSP prohíbe atributos style. */
+
+/* Insumo sin costo (D49): se nota sin gritar. */
+.inv-missing {
+  color: var(--warn);
+}
+/* Unidad de cada línea de receta con ancho fijo: las cantidades y la papelera quedan alineadas. */
+.inv-unit {
+  min-width: 52px;
+}
+/* En celular la cantidad va más angosta: el nombre del insumo no se parte en una palabra por línea. */
+@media (max-width: 560px) {
+  .row:has(.inv-unit) .price-in {
+    width: 64px;
+  }
+}
+
+/* Recetas: costo, margen y precio sugerido por versión (plato y combo). */
+.inv-cost {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.inv-cost-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.inv-cost-head h3 {
+  font-size: 15px;
+}
+.inv-target {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.inv-target .input {
+  width: 72px;
+}
+.inv-cost-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.inv-cost-card {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--bg);
+}
+.inv-cost-card dt {
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.inv-cost-card dd {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.inv-cost-card dd b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.inv-cost-card dd b.down {
+  color: var(--danger);
+}
+.inv-cost-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0;
+  font-size: 13px;
+}
+
+/* Insumos en celular: cada insumo es una tarjeta (nombre y estado arriba; inicial, hay ahora y mínimo en
+   tres columnas; acciones abajo). El marcado sigue siendo la misma tabla; solo cambia el CSS. */
+@media (max-width: 640px) {
+  .inv-supplies,
+  .inv-supplies tbody {
+    display: block;
+  }
+  .inv-supplies thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .inv-supplies tr {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px 12px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--line);
+  }
+  .inv-supplies td {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    overflow-wrap: anywhere;
+  }
+  .inv-supplies td:first-child {
+    grid-column: 1 / span 2;
+  }
+  .inv-supplies td.num {
+    text-align: left;
+  }
+  .inv-supplies td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 2px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .inv-supplies .inv-level {
+    grid-area: 1 / 3;
+    justify-self: end;
+  }
+  .inv-supplies .inv-actions {
+    grid-column: 1 / -1;
+  }
+  .inv-supplies .inv-actions .btn-row {
+    flex-wrap: wrap;
+  }
+}

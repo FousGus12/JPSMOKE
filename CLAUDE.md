@@ -22,6 +22,14 @@ Micro app de una hamburguesería al barril en Bogotá (por ahora solo domicilio)
 - Antes de dar algo por terminado: tipos, lint, unitarias, pgTAP, e2e, celular y escritorio.
 - Español de Colombia, directo y corto. La empresa se escribe **CLOUP.CO**.
 
+## Modo de trabajo con subagentes (desde 2026-11-19, pedido de Gustavo)
+
+- Bloques de varios ítems: primero un planificador con `model: fable` (Fable 5.2) que hace inventario, tabla por ítem (estado, archivos, migración, modelo, dependencias, oleada) y revisión final.
+- Reparto: Haiku para tareas mecánicas y búsquedas; Sonnet para UI acotada y pruebas; Opus para lógica delicada, datos y revisión.
+- El coordinador hace migraciones, Edge Functions, tipos y `pnpm db:local` (base local única: ningún subagente la reinicia). Un solo escritor por archivo.
+- Ante fallas o bloqueos (pruebas en rojo sin causa obvia, segundo intento fallido, cambio de enfoque): consultar al advisor antes de insistir (pedido de Gustavo).
+- Oleadas: 0 errores reproducidos · 1 datos · 2 interfaz en paralelo · 3 revisión general (propuestas nuevas solo como lista, sin construir).
+
 ## Aprobaciones de Gustavo (obligatorias)
 
 - Crear repo de GitHub, proyecto de Supabase o de Vercel.

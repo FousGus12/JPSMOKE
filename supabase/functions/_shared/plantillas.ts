@@ -1,7 +1,7 @@
 // Plantillas de WhatsApp (F9, D32). Los nombres y el orden de los parámetros se registran igual en Meta.
 // Sin dependencias: las usan la función whatsapp (Deno) y el panel (vista previa).
 
-export type WaKind = 'pedido_recibido' | 'aviso_negocio' | 'en_camino' | 'informe_semanal';
+export type WaKind = 'pedido_recibido' | 'aviso_negocio' | 'en_camino' | 'informe_semanal' | 'stock_bajo';
 
 export interface WaOrder {
   code: string;
@@ -20,6 +20,13 @@ export interface WaReport {
   orders: number;
   star: string | null;
 }
+/** Insumo que cruzó su mínimo (D46). */
+export interface WaSupply {
+  name: string;
+  stock: number;
+  min: number;
+  unit: string;
+}
 export interface WaMessage {
   id: string;
   kind: WaKind;
@@ -30,6 +37,7 @@ export interface WaMessage {
   eta: string;
   order: WaOrder | null;
   report: WaReport | null;
+  supply?: WaSupply | null;
 }
 export type Built = { to: string; template: WaKind; params: string[]; preview: string } | { skip: string };
 
@@ -112,6 +120,24 @@ export function buildMessage(message: WaMessage): Built {
         template: 'informe_semanal',
         params,
         preview: `📊 ${message.restaurant}, semana del ${params[0]} al ${params[1]}: ventas ${params[2]}, ${params[3]} pedidos. Producto estrella: ${params[4]}.`,
+      };
+    }
+    case 'stock_bajo': {
+      const to = toWhatsApp(message.business_phone);
+      const supply = message.supply;
+      if (!to || !supply) return { skip: 'sin_whatsapp_negocio' };
+      const qty = (value: number) =>
+        new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 }).format(value);
+      const params = [
+        supply.name.slice(0, 60),
+        `${qty(supply.stock)} ${supply.unit}`,
+        `${qty(supply.min)} ${supply.unit}`,
+      ];
+      return {
+        to,
+        template: 'stock_bajo',
+        params,
+        preview: `⚠️ ${message.restaurant}: ${params[0]} llegó al mínimo. Quedan ${params[1]} (mínimo ${params[2]}). Revisa el inventario en el panel.`,
       };
     }
   }

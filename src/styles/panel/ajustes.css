@@ -1,0 +1,48 @@
+/* JP Smoke · panel · ajustes (v0.18). Solo clases: la CSP prohíbe atributos style. */
+.ajustes-note {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, currentColor);
+  border-radius: 10px;
+  font-size: 0.9rem;
+}
+.ajustes-error {
+  display: block;
+  margin-top: 4px;
+  color: var(--danger, #c0392b);
+}
+.coords-help {
+  margin: 0;
+}
+.zone-locality {
+  min-width: 0;
+  max-width: 11rem;
+}
+.zone-locality.sin-localidad {
+  border-color: var(--warn, currentColor);
+}
+
+/* Canales: el interruptor queda centrado con el campo del enlace, no con nombre + campo. */
+.row.canal-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 14px;
+  row-gap: 6px;
+  align-items: center;
+}
+.canal-row .grow-field {
+  display: contents;
+}
+.canal-row .grow-field > b {
+  grid-area: 1 / 1;
+}
+.canal-row .grow-field > .input {
+  grid-area: 2 / 1;
+}
+.canal-row .grow-field > .ajustes-error {
+  grid-area: 3 / 1;
+  margin-top: 0;
+}
+.canal-row > .switch {
+  grid-area: 2 / 2;
+}

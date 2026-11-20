@@ -11,6 +11,8 @@ html {
 }
 body {
   margin: 0;
+  /* Chispas y franja animada no deben crear scroll horizontal en celulares de 320 px (clip no rompe sticky). */
+  overflow-x: clip;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-body);
@@ -621,12 +623,6 @@ body::after {
   position: relative;
   height: 230vh;
 }
-@media (max-width: 760px) {
-  /* En celular un deslizamiento recorre mucho: más alto para que se vea la separación (svh: estable con la barra del navegador). */
-  .hero {
-    height: 320svh;
-  }
-}
 .hero-stage {
   position: sticky;
   top: 0;
@@ -727,6 +723,8 @@ body::after {
   margin: 18px 0 0;
   font-size: 13px;
   color: var(--text-2);
+  /* En escritorio las fotos juntas pasan por detrás de esta línea al cargar: sombra para que se lea. */
+  text-shadow: 0 1px 6px rgb(0 0 0 / 0.85);
 }
 .dot {
   width: 8px;
@@ -812,8 +810,6 @@ body::after {
   /* Sin backdrop-filter: el desenfoque se redibujaba en cada cuadro y trababa la animación. */
   background: color-mix(in srgb, #000 78%, transparent);
   color: #fff;
-  opacity: 0;
-  will-change: opacity, transform;
 }
 .hcard-label b {
   font-family: var(--font-display);
@@ -827,6 +823,216 @@ body::after {
   font-weight: 700;
   color: var(--accent-soft);
   white-space: nowrap;
+}
+
+/* Escritorio con mouse: sitio.ts liga el despliegue al scroll y muestra las etiquetas al separarse. */
+@media (min-width: 761px) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .hcard-label {
+    opacity: 0;
+    will-change: opacity, transform;
+  }
+}
+
+/* D50 · Inicio de una pantalla en celular o pantalla táctil. Nada depende del scroll: el estado en reposo
+   es el final (abanico visible) y la entrada es una animación CSS por tiempo, con `backwards`, que corre
+   al cargar. Si se muestra la bienvenida completa, .is-held la pausa y .is-replay la repite al cerrarla.
+   La media query debe coincidir con `compactHero` en sitio.ts. */
+@media (max-width: 760px), (pointer: coarse) {
+  .hero {
+    height: auto;
+  }
+  .hero-stage {
+    position: relative;
+    height: auto;
+    min-height: 100vh;
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(14px, 3svh, 32px);
+    padding: 84px 0 32px;
+  }
+  .hero-copy {
+    transform: none;
+    animation: hero-rise 0.7s var(--ease) backwards;
+  }
+  .hero-scroll {
+    display: none;
+  }
+  .hero-cards {
+    position: relative;
+    inset: auto;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    width: 100%;
+    padding: 0 var(--gutter) 18px;
+  }
+  .hcard {
+    /* Cuatro en fila con 12 % de traslape; limitadas por el alto para que todo quepa en una pantalla. */
+    --cw: min(calc((100vw - 2 * var(--gutter)) / 3.75), 21svh, 190px);
+    position: relative;
+    left: auto;
+    top: auto;
+    flex: none;
+    margin: 0;
+    border-radius: 18px;
+    transform-origin: 50% 100%;
+    transform: translateY(var(--fy)) rotate(var(--fr));
+    will-change: auto;
+    animation: hcard-in 0.8s var(--ease) backwards;
+    animation-delay: calc(0.15s + var(--i) * 0.09s);
+  }
+  .hcard + .hcard {
+    margin-left: calc(var(--cw) * -0.12);
+  }
+  .hero-cards .hcard-1 {
+    --i: 0;
+    --fr: -9deg;
+    --fy: 16px;
+    --sx: calc(var(--cw) * 1.3);
+    z-index: 1;
+  }
+  .hero-cards .hcard-2 {
+    --i: 1;
+    --fr: -3deg;
+    --fy: 2px;
+    --sx: calc(var(--cw) * 0.45);
+    z-index: 3;
+  }
+  .hero-cards .hcard-3 {
+    --i: 2;
+    --fr: 3deg;
+    --fy: 2px;
+    --sx: calc(var(--cw) * -0.45);
+    z-index: 2;
+  }
+  .hero-cards .hcard-4 {
+    --i: 3;
+    --fr: 9deg;
+    --fy: 16px;
+    --sx: calc(var(--cw) * -1.3);
+    z-index: 1;
+  }
+  .hcard-label {
+    left: 6px;
+    right: 6px;
+    bottom: 6px;
+    padding: 6px 8px;
+    border-radius: 10px;
+    justify-content: center;
+    text-align: center;
+    animation: fade-in 0.4s var(--ease) backwards;
+    animation-delay: calc(0.65s + var(--i) * 0.09s);
+  }
+  .hcard-label b {
+    font-size: 14px;
+  }
+  .hcard-label span {
+    display: none;
+  }
+  .hero.is-held .hero-copy,
+  .hero.is-held .hcard,
+  .hero.is-held .hcard-label {
+    animation-play-state: paused;
+  }
+  .hero.is-replay .hero-copy {
+    animation-name: hero-rise-again;
+  }
+  .hero.is-replay .hcard {
+    animation-name: hcard-in-again;
+  }
+  .hero.is-replay .hcard-label {
+    animation-name: fade-in-again;
+  }
+}
+@media (max-width: 760px) {
+  .hero-stage {
+    /* Deja ver las fotos por encima de la barra inferior. */
+    padding-bottom: calc(84px + env(safe-area-inset-bottom));
+  }
+  .hero-title {
+    margin: 8px 0;
+  }
+  /* Los dos botones caben en una fila desde 360 px de ancho: si bajan a dos filas el inicio pasa del
+     alto de la pantalla en celulares bajos (iPhone 15: 393 × 659). Por debajo se deja que bajen. */
+  .hero-actions {
+    gap: 8px;
+  }
+  .hero-actions .btn-lg {
+    --h: 50px;
+    padding: 0 clamp(12px, 3.5vw, 18px);
+    font-size: clamp(12px, 3.3vw, 13px);
+    white-space: nowrap;
+  }
+  /* Con el modal abierto (hoja desde abajo) los avisos van arriba para no tapar las opciones. */
+  html.is-locked .toasts {
+    bottom: auto;
+    top: calc(12px + env(safe-area-inset-top));
+  }
+}
+/* Celulares angostos (360 px): el antetítulo del inicio cabe en una línea; en dos líneas el inicio
+   pasaba ~20 px del alto de la pantalla (360 × 640). */
+@media (max-width: 380px) {
+  .hero-copy .eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    gap: 6px;
+  }
+}
+/* Celulares bajos (≤ 680 px de alto): menos aire entre bloques para que el inicio quepa en una pantalla. */
+@media (max-width: 760px) and (max-height: 680px) {
+  .hero-stage {
+    padding-top: 76px;
+    gap: 12px;
+  }
+  .hero-sub {
+    margin-bottom: 16px;
+  }
+  .hero-note {
+    margin-top: 12px;
+  }
+}
+/* Mismas animaciones con otro nombre: cambiar el nombre las reinicia al cerrar la bienvenida. */
+@keyframes hcard-in {
+  from {
+    opacity: 0;
+    transform: translate(var(--sx, 0), 40px) rotate(0deg) scale(0.6);
+  }
+}
+@keyframes hcard-in-again {
+  from {
+    opacity: 0;
+    transform: translate(var(--sx, 0), 40px) rotate(0deg) scale(0.6);
+  }
+}
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+@keyframes hero-rise-again {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+@keyframes fade-in-again {
+  from {
+    opacity: 0;
+  }
+}
+/* Reducir movimiento: inicio de una pantalla y estático en cualquier ancho (la regla global quita las
+   animaciones; en escritorio sitio.ts deja las tarjetas en su posición final). */
+@media (prefers-reduced-motion: reduce) {
+  .hero {
+    height: auto;
+  }
+  .hero-stage {
+    position: relative;
+  }
 }
 
 /* ---------- Franja ---------- */
@@ -898,15 +1104,14 @@ body::after {
 }
 
 .reveal {
-  opacity: 0;
-  transform: translateY(24px);
   transition:
     opacity var(--t4) var(--ease),
     transform var(--t4) var(--ease);
 }
-.reveal.is-in {
-  opacity: 1;
-  transform: none;
+/* Solo se oculta si sitio.ts corrió (pone .js-reveal en <html>): sin JS o con error, todo se ve. */
+.js-reveal .reveal:not(.is-in) {
+  opacity: 0;
+  transform: translateY(24px);
 }
 
 /* Carrusel destacados */
@@ -1271,7 +1476,8 @@ body::after {
   display: flex;
   align-items: flex-end;
 }
-.promo-hero > img {
+.promo-hero > img,
+.promo-hero > picture > img {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -1543,6 +1749,149 @@ body::after {
   color: var(--accent-text);
   font-weight: 600;
   font-size: 14px;
+}
+
+/* Cobertura verificable (D44): verificador, mapa SVG de localidades y aviso en el pedido */
+.cover-check {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border-radius: var(--r-card);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.cover-check-title {
+  margin: 0;
+  font-weight: 700;
+}
+.cover-check-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.cover-check-row .select {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.cover-result {
+  margin: 0;
+  font-weight: 600;
+}
+.cover-result:empty {
+  display: none;
+}
+.cover-result.is-yes {
+  color: var(--ok);
+}
+.cover-result.is-no {
+  color: var(--warn);
+}
+.cover-result a {
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+.cover-privacy {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.cover-side {
+  display: grid;
+  gap: 16px;
+}
+.cover-map {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+.cover-map svg {
+  width: 100%;
+  height: auto;
+  max-height: 460px;
+}
+.cover-map .loc {
+  fill: var(--surface);
+  stroke: var(--bg);
+  stroke-width: 1;
+  stroke-linejoin: round;
+  transition: fill var(--t2) var(--ease);
+}
+.cover-map .loc.is-on {
+  fill: var(--accent);
+}
+.cover-map .loc.is-picked {
+  stroke: var(--text);
+  stroke-width: 2.5;
+}
+.map-pin-halo {
+  fill: var(--text);
+  opacity: 0.3;
+}
+.map-pin-dot {
+  fill: var(--text);
+  stroke: var(--bg);
+  stroke-width: 1.5;
+}
+.cover-map figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px 14px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.map-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.map-key i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+.map-key .key-on {
+  background: var(--accent);
+}
+.map-key .key-off {
+  background: var(--surface);
+  border: 1px solid var(--muted);
+}
+.map-key .key-pin {
+  border-radius: 50%;
+  background: var(--text);
+}
+.map-credit {
+  flex-basis: 100%;
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+}
+.geo-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.geo-note {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.geo-note:empty {
+  display: none;
+}
+.geo-note.is-yes {
+  color: var(--ok);
+}
+.geo-note.is-no {
+  color: var(--warn);
+}
+.geo-note a {
+  color: var(--accent-text);
+  text-decoration: underline;
 }
 
 /* Cierre */
@@ -1824,6 +2173,31 @@ body::after {
   color: var(--text);
 }
 
+/* Bloqueo de scroll con modal, carrito o menú abiertos (clase en <html>, la pone sitio.ts). El scroll de
+   adentro no se encadena a la página. */
+html.is-locked {
+  overflow: hidden;
+}
+.modal,
+.modal-card,
+.sheet-body,
+.drawer,
+.popup,
+.popup-card,
+.intro {
+  overscroll-behavior: contain;
+}
+/* Widget de Cloudflare Turnstile: solo ocupa espacio si pide interacción. */
+.ts-box:empty {
+  display: none;
+}
+.modal-card > .ts-box {
+  padding: 0 22px;
+}
+.ts-box iframe {
+  max-width: 100%;
+}
+
 /* Modal */
 .modal {
   position: fixed;
@@ -2099,7 +2473,7 @@ body::after {
 }
 @media (max-width: 760px) {
   .tracker {
-    bottom: calc(86px + env(safe-area-inset-bottom));
+    bottom: calc(80px + env(safe-area-inset-bottom));
   }
 }
 
@@ -2267,22 +2641,14 @@ body::after {
   height: 100%;
   width: 0;
   background: var(--accent);
-  transition: width 2.4s linear;
+  /* D51: decorativa; los botones ya están visibles. */
+  transition: width 0.8s linear;
 }
 .intro-actions {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
   justify-content: center;
-  opacity: 0;
-  transform: translateY(10px);
-  transition:
-    opacity var(--t3) var(--ease),
-    transform var(--t3) var(--ease);
-}
-.intro.is-ready .intro-actions {
-  opacity: 1;
-  transform: none;
 }
 .intro .btn-ghost {
   border-color: #fff;
@@ -2326,47 +2692,6 @@ body::after {
   .logo b {
     font-size: 22px;
   }
-  .hcard {
-    --cw: min(43vw, 200px);
-    border-radius: 20px;
-  }
-  .hero-copy {
-    transform: translateY(calc(var(--p, 0) * -27svh)) scale(calc(1 - var(--p, 0) * 0.2));
-  }
-  .hero-sub,
-  .hero-actions,
-  .hero-channels,
-  .hero-note {
-    opacity: calc(1 - var(--p, 0) * 1.8);
-    transition: visibility var(--t2);
-  }
-  .hero.is-spread .hero-sub,
-  .hero.is-spread .hero-actions,
-  .hero.is-spread .hero-channels,
-  .hero.is-spread .hero-note {
-    visibility: hidden;
-  }
-  .hcard-label {
-    left: 6px;
-    right: 6px;
-    bottom: 6px;
-    padding: 7px 8px;
-    border-radius: 12px;
-    flex-direction: column;
-    align-items: start;
-    gap: 2px;
-  }
-  .hcard-label span {
-    font-size: 11px;
-  }
-  .hero-title {
-    margin: 8px 0;
-  }
-  .hero-actions .btn-lg {
-    --h: 50px;
-    padding: 0 18px;
-    font-size: 13px;
-  }
   .carta-bar {
     top: 68px;
   }
@@ -2391,6 +2716,12 @@ body::after {
   .zones {
     grid-template-columns: 1fr;
   }
+  .cover-map svg {
+    max-height: 340px;
+  }
+  .cover-check-row .btn {
+    flex: 1 1 100%;
+  }
   .tour-cards {
     grid-template-columns: 1fr;
   }
@@ -2403,19 +2734,24 @@ body::after {
   .wa-float {
     display: none;
   }
+  /* Fija a ras del borde (no sticky: en páginas cortas como /pedido quedaría a media pantalla), fondo
+     sólido sin backdrop-filter y sin transform; el área segura va por padding. Se oculta con el teclado. */
   .bottom-bar {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
     position: fixed;
     z-index: 95;
-    left: 10px;
-    right: 10px;
-    bottom: calc(10px + env(safe-area-inset-bottom));
-    border-radius: 20px;
-    background: color-mix(in srgb, #000 85%, transparent);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    padding: 6px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: color-mix(in srgb, #000 88%, var(--bg));
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
+  }
+  .kb-open .bottom-bar,
+  .kb-open .tracker {
+    display: none;
   }
   .bottom-bar a,
   .bottom-bar button {
@@ -2617,6 +2953,16 @@ body::after {
 }
 
 /* Ajustes del sitio real (sin atributos style por la CSP) */
+/* D51: <picture> (AVIF + WebP) no agrega caja: el <img> se mide igual que antes. */
+.hcard picture,
+.pcard-img picture,
+.item-img picture,
+.promo-hero picture,
+.event picture,
+.tour-img picture,
+.intro picture {
+  display: contents;
+}
 .intro-bg {
   width: 100%;
   height: 100%;

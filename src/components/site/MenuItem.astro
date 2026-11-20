@@ -1,5 +1,7 @@
 ---
 import { formatCop } from '../../core/money';
+import Photo from './Photo.astro';
+import { PHOTO } from '../../lib/images';
 import type { Product } from '../../lib/content';
 
 interface Props {
@@ -27,7 +29,7 @@ const search = `${product.name} ${product.description}`.toLowerCase();
     data-search={search}
   >
     <div class="item-img">
-      {product.image && <img src={product.image} alt="" loading="lazy" width="112" height="112" />}
+      <Photo src={product.image} preset={PHOTO.thumb} width={112} height={112} />
     </div>
     <div class="item-body">
       <h4>{product.name}</h4>

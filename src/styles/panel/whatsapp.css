@@ -1,0 +1,88 @@
+/* JP Smoke · panel · whatsapp (v0.18). Solo clases: la CSP prohíbe atributos style. */
+
+.wa-intro p {
+  margin: 6px 0 0;
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.wa-lead {
+  font-weight: 600;
+  font-size: 13px;
+}
+.mode small {
+  line-height: 1.4;
+}
+.wa-field {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+.wa-field label {
+  font-size: 13px;
+  color: var(--text-2);
+}
+.wa-field .inline-add {
+  margin-top: 0;
+}
+.wa-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.wa-step {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.wa-step div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.wa-step small,
+.wa-tpl {
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.wa-pill {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--warn);
+}
+.wa-step.is-ok .wa-pill {
+  color: var(--ok);
+}
+.wa-step.is-miss .wa-pill {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.wa-cost {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.wa-cost b {
+  color: var(--text);
+}
+@media (max-width: 560px) {
+  .wa-step {
+    flex-direction: column;
+  }
+}

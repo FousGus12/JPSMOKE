@@ -1,0 +1,282 @@
+/* Seguimiento del pedido (D52): tarjeta compacta e ilustración animada por estado.
+   El estado base es el cuadro final; las animaciones solo mueven transform, opacity y stroke-dashoffset. */
+.track-page.track {
+  width: 100%;
+  max-width: 560px;
+  box-sizing: border-box;
+  gap: 12px;
+  padding: 88px max(16px, var(--gutter)) calc(40px + env(safe-area-inset-bottom, 0px));
+}
+.track-page > * {
+  min-width: 0;
+}
+.track-page .track-hero {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 16px;
+  row-gap: 4px;
+  padding: clamp(14px, 4vw, 20px);
+  border-radius: 24px;
+}
+.track-page .track-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.track-page .track-hero:not(:has(.track-art)) {
+  grid-template-columns: 1fr;
+}
+.track-page .track-hero .code {
+  font-size: 17px;
+}
+.track-page .track-status {
+  margin: 0;
+  font-size: clamp(34px, 9vw, 52px);
+  overflow-wrap: anywhere;
+}
+.track-page .track-hero p {
+  overflow-wrap: anywhere;
+}
+.track-page .track-art {
+  width: clamp(76px, 22vw, 108px);
+  aspect-ratio: 1;
+  color: var(--text-2);
+}
+.track-page .track-art svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+@media (max-width: 399px) {
+  .track-page .track-hero {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+  .track-page .track-art {
+    width: 88px;
+  }
+}
+.track-page .track-card {
+  padding: 14px 16px;
+  gap: 8px;
+}
+.track-page .steps-v li {
+  padding-bottom: 14px;
+}
+.track-page .steps-v li:last-child {
+  padding-bottom: 0;
+}
+.track-page .track-lines span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.track-page .track-note {
+  margin: 0;
+  padding-inline: 8px;
+}
+
+/* Colores del dibujo */
+.track-art .acc {
+  stroke: var(--accent-text);
+}
+.track-art .ok {
+  stroke: var(--ok);
+}
+.track-art .gr,
+.track-art .sp {
+  stroke: var(--muted);
+}
+.track-art .ln,
+.track-art .tick,
+.track-art .ring {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+}
+.track-art .sm {
+  opacity: 0.75;
+  stroke: var(--text-2);
+}
+
+/* Recibido: líneas que se escriben y lápiz que va y viene */
+.track-art .ln {
+  animation: art-write 4s ease-in-out infinite backwards;
+}
+.track-art .ln2 {
+  animation-delay: 0.6s;
+}
+.track-art .ln3 {
+  animation-delay: 1.2s;
+}
+.track-art .pen {
+  animation: art-pen 1.3s ease-in-out infinite alternate;
+}
+@keyframes art-write {
+  0% {
+    stroke-dashoffset: 1;
+    opacity: 1;
+  }
+  35%,
+  88% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+@keyframes art-pen {
+  from {
+    transform: translate(-4px, 0);
+  }
+  to {
+    transform: translate(2px, 2px);
+  }
+}
+
+/* Confirmado: se dibuja y luego late suave */
+.track-art .ring {
+  animation: art-draw 0.7s var(--ease) backwards;
+}
+.track-art .tick {
+  animation: art-draw 0.5s var(--ease) 0.6s backwards;
+}
+.track-art .beat {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: art-beat 2.4s ease-in-out 1.4s infinite;
+}
+@keyframes art-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes art-beat {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+/* En el barril: humo que sube */
+.track-art .sm {
+  animation: art-smoke 3s ease-out infinite backwards;
+}
+.track-art .sm2 {
+  animation-delay: 1s;
+}
+.track-art .sm3 {
+  animation-delay: 2s;
+}
+.track-art .burger {
+  animation: art-bob 2.6s ease-in-out infinite;
+}
+@keyframes art-smoke {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  30% {
+    opacity: 0.75;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+@keyframes art-bob {
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+/* En camino: moto avanzando */
+.track-art .whs .wh {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: art-spin 0.7s linear infinite;
+}
+.track-art .moto {
+  animation: art-bump 0.7s ease-in-out infinite;
+}
+.track-art .sp {
+  animation: art-speed 0.9s linear infinite;
+}
+.track-art .sp2 {
+  animation-delay: 0.3s;
+}
+.track-art .sp3 {
+  animation-delay: 0.6s;
+}
+@keyframes art-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes art-bump {
+  50% {
+    transform: translateY(-1.5px);
+  }
+}
+@keyframes art-speed {
+  0% {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  40% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+}
+
+/* Listo para recoger: bolsa que se mece */
+.track-art .bag {
+  animation: art-bob 2.4s ease-in-out infinite;
+}
+.track-art .bag .tick {
+  animation: art-draw 0.6s var(--ease) 0.2s backwards;
+}
+
+/* Entregado: la caja cae, el moño y el sello aparecen (una sola vez) */
+.track-art .box {
+  animation: art-drop 0.5s var(--ease) backwards;
+}
+.track-art .bow,
+.track-art .seal {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: art-pop 0.45s var(--ease) 0.45s backwards;
+}
+.track-art .seal .tick {
+  animation: art-draw 0.4s var(--ease) 0.8s backwards;
+}
+@keyframes art-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+@keyframes art-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track-art *,
+  .track-art *::before {
+    animation: none !important;
+  }
+}

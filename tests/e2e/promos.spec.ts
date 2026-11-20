@@ -73,8 +73,9 @@ test('evento nuevo y cambio de bienvenida', async ({ page }) => {
   expect(
     sql(`select string_agg(title, ',') from public.events where restaurant_id = '${RID}' and show_intro`),
   ).toBe('Evento E2E');
-  await page.getByText('Aviso centrado').click();
-  await expect(page.getByText('Bienvenida: Aviso centrado')).toBeVisible();
+  // El modo vive en el bloque Bienvenida (D41: también tiene su propio apartado en Contenido).
+  await page.locator('label.mode', { hasText: 'Aviso pequeño' }).click();
+  await expect(page.getByText('Bienvenida: Aviso pequeño')).toBeVisible();
   expect(sql(`select intro_mode from public.restaurant_settings where restaurant_id = '${RID}'`)).toBe(
     'aviso',
   );

@@ -30,6 +30,8 @@ export interface Zone {
   name: string;
   fee: number;
   active: boolean;
+  /** Localidad de Bogotá (IDECA, 2 dígitos) para el mapa y el verificador (D44). */
+  localityCode: string | null;
 }
 export interface PaymentMethod {
   code: string;
@@ -92,7 +94,16 @@ export interface SiteData {
   tiktok: string | null;
   hours: Array<[string, string]>;
   /** Punto físico (D33): se muestra solo con `open`; recoger exige local abierto y dirección. */
-  store: { open: boolean; address: string; mapsUrl: string; hours: Array<[string, string]>; pickup: boolean };
+  store: {
+    open: boolean;
+    address: string;
+    mapsUrl: string;
+    hours: Array<[string, string]>;
+    pickup: boolean;
+    /** Coordenadas del local para el mapa (D44); null si no se han puesto. */
+    lat: number | null;
+    lng: number | null;
+  };
   deliveryMin: number;
   deliveryEta: string;
   introMode: 'completa' | 'aviso' | 'ninguna';
@@ -130,7 +141,7 @@ export async function loadSiteData(): Promise<SiteData> {
     supabase
       .from('restaurant_settings')
       .select(
-        'hero, blocks, sections, channels, whatsapp, instagram, tiktok, hours, delivery_min, delivery_eta, intro_mode, accepting_orders, store_open, store_address, store_maps_url, store_hours, pickup_enabled',
+        'hero, blocks, sections, channels, whatsapp, instagram, tiktok, hours, delivery_min, delivery_eta, intro_mode, accepting_orders, store_open, store_address, store_maps_url, store_hours, pickup_enabled, store_lat, store_lng',
       )
       .eq('restaurant_id', rid)
       .single(),
@@ -148,7 +159,7 @@ export async function loadSiteData(): Promise<SiteData> {
       .order('position'),
     supabase
       .from('delivery_zones')
-      .select('id, name, fee, active')
+      .select('id, name, fee, active, locality_code')
       .eq('restaurant_id', rid)
       .order('position'),
     supabase
@@ -190,6 +201,8 @@ export async function loadSiteData(): Promise<SiteData> {
       mapsUrl: st.store_maps_url ?? '',
       hours: (st.store_hours ?? []) as Array<[string, string]>,
       pickup: st.pickup_enabled,
+      lat: st.store_lat === null ? null : Number(st.store_lat),
+      lng: st.store_lng === null ? null : Number(st.store_lng),
     },
     deliveryMin: st.delivery_min,
     deliveryEta: st.delivery_eta,
@@ -213,7 +226,10 @@ export async function loadSiteData(): Promise<SiteData> {
       featured: row.featured,
       hero: row.hero,
     })),
-    zones: must(zones, 'las zonas'),
+    zones: must(zones, 'las zonas').map(({ locality_code, ...zone }) => ({
+      ...zone,
+      localityCode: locality_code,
+    })),
     payments: must(payments, 'los medios de pago').map((row) => ({
       code: row.code,
       label: row.label,

@@ -1,0 +1,55 @@
+/* JP Smoke · panel · eventos (v0.18). Solo clases: la CSP prohíbe atributos style. */
+
+.bienvenida-ev {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+.bienvenida-warn {
+  background: var(--surface-2, transparent);
+  border: 1px solid var(--line, currentColor);
+  padding: 8px 12px;
+  border-radius: var(--radius, 8px);
+}
+.bienvenida-info {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.bienvenida-data {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 8px 0 0;
+}
+.bienvenida-data dt {
+  color: var(--muted, inherit);
+}
+.bienvenida-data dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.bienvenida-preview {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  border: 1px dashed var(--line, currentColor);
+  border-radius: var(--radius, 8px);
+  padding: 12px;
+}
+.bienvenida-preview.mode-aviso {
+  max-width: 360px;
+}
+.bienvenida-preview img {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: var(--radius, 8px);
+}
+.bienvenida-preview > div {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}

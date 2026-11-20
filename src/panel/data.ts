@@ -1,6 +1,6 @@
 // Datos del panel de pedidos (F5). Todo pasa por RLS y por funciones que validan el rol en la base.
 import { getSupabase } from '../lib/supabase';
-import type { OrderChannel, OrderStatus } from '../core/orders';
+import { statusErrorText, type OrderChannel, type OrderStatus, type StaffRole } from '../core/orders';
 
 export interface PanelOrder {
   id: string;
@@ -57,10 +57,15 @@ export async function setStatus(orderId: string, status: OrderStatus, reason?: s
     p_status: status,
     p_reason: reason ?? null,
   });
-  if (error)
-    throw new Error(
-      error.message.includes('cerrado') ? 'Ese pedido ya está cerrado.' : 'No se pudo cambiar el estado.',
-    );
+  if (error) throw new Error(statusErrorText(error));
+}
+
+/** Rol de quien usa el panel (solo para mostrar botones; la base valida con is_admin_of). */
+export async function loadMyRole(): Promise<StaffRole | null> {
+  const { data, error } = await getSupabase().rpc('my_staff');
+  if (error || !data) return null;
+  const role = (data as { role?: unknown }).role;
+  return role === 'admin' || role === 'operador' ? role : null;
 }
 
 export interface Summary {

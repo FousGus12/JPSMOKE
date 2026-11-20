@@ -6,3 +6,4 @@ supabase/.temp
 .astro
 *.md
 src/lib/database.types.ts
+src/data/bogota-localidades.json

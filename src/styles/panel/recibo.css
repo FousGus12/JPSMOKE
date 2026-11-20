@@ -1,0 +1,270 @@
+/* JP Smoke · panel · recibo (D54). Solo clases: la CSP prohíbe atributos style. */
+
+.recibo {
+  display: grid;
+  /* minmax(0, 1fr): en celulares de 360 px el papel de 80 mm y la hoja se encogen al ancho del modal
+     en vez de empujarlo (antes se cortaban el recibo y "Compartir imagen"). */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+.recibo-tools {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+.recibo-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.recibo-frame {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  padding: 20px 12px;
+  border-radius: var(--r-card);
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+
+/* El papel es blanco y negro siempre: así se ve igual que sale de la impresora. */
+.recibo-paper {
+  position: relative;
+  box-sizing: border-box;
+  width: 320px;
+  max-width: 100%;
+  padding: 18px 16px 20px;
+  background: #fff;
+  color: #000;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    Arial,
+    sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  /* borde dentado tipo tirilla */
+  border-bottom: 3px dashed #000;
+}
+.recibo-t58 .recibo-paper {
+  width: 232px;
+  padding: 14px 10px 16px;
+}
+.recibo-hoja .recibo-paper {
+  width: 460px;
+  padding: 28px 28px 32px;
+  font-size: 14px;
+}
+
+.recibo-head {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 2px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed #000;
+}
+.recibo-logo {
+  width: 44px;
+  height: 44px;
+}
+.recibo-head h3 {
+  margin: 4px 0 0;
+  font-size: 19px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.recibo-head p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.recibo-meta {
+  margin: 10px 0;
+  padding-bottom: 10px;
+  display: grid;
+  gap: 3px;
+  border-bottom: 1px dashed #000;
+}
+.recibo-meta > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.recibo-meta dt {
+  flex: none;
+}
+.recibo-meta dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.recibo-code {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.recibo-items {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0 0 10px;
+  display: grid;
+  gap: 4px;
+  border-bottom: 1px dashed #000;
+}
+.recibo-items li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.recibo-items li > span:first-child {
+  overflow-wrap: anywhere;
+}
+.recibo-items li > span:last-child {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.recibo-addon {
+  padding-left: 14px;
+  font-size: 12px;
+}
+
+.recibo-totals {
+  margin: 0;
+  display: grid;
+  gap: 3px;
+}
+.recibo-totals > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.recibo-totals dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.recibo-total {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid #000;
+  font-size: 17px;
+  font-weight: 700;
+}
+.recibo-pay {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #000;
+}
+.recibo-note {
+  margin: 10px 0 0;
+  overflow-wrap: anywhere;
+}
+.recibo-foot {
+  margin-top: 14px;
+  padding-top: 10px;
+  text-align: center;
+  border-top: 1px dashed #000;
+}
+.recibo-thanks {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+.recibo-legal {
+  margin: 4px 0 0;
+  font-size: 11px;
+}
+.recibo-stamp {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  transform: translateX(-50%) rotate(-18deg);
+  padding: 4px 16px;
+  border: 4px solid #000;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  pointer-events: none;
+}
+
+@page tirilla58 {
+  size: 58mm auto;
+  margin: 2mm;
+}
+@page tirilla80 {
+  size: 80mm auto;
+  margin: 2mm;
+}
+@page hoja {
+  size: A4;
+  margin: 15mm;
+}
+
+@media print {
+  body > *:not(.recibo-root) {
+    display: none !important;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  .recibo-root .modal {
+    position: static;
+    display: block;
+    padding: 0;
+    background: none;
+  }
+  .recibo-root .modal-card {
+    width: auto;
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: none;
+  }
+  .recibo-root .modal-head,
+  .recibo-tools {
+    display: none !important;
+  }
+  .recibo-root .modal-body {
+    padding: 0;
+  }
+  .recibo-frame {
+    display: block;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+  }
+  .recibo-paper {
+    width: 100%;
+    padding: 0;
+    border-bottom: 0;
+    font-size: 12px;
+    break-inside: avoid;
+  }
+  .recibo-hoja .recibo-paper {
+    width: 100mm;
+    margin: 0 auto;
+    font-size: 13px;
+  }
+  .recibo-t58 .recibo-frame {
+    page: tirilla58;
+  }
+  .recibo-t80 .recibo-frame {
+    page: tirilla80;
+  }
+  .recibo-hoja .recibo-frame {
+    page: hoja;
+  }
+  .recibo-legal {
+    font-size: 11px;
+  }
+  .recibo-addon {
+    font-size: 11px;
+  }
+}

@@ -2,9 +2,17 @@ import { execFileSync } from 'node:child_process';
 import { expect, test, type Page } from '@playwright/test';
 
 const DB = 'postgresql://postgres:postgres@127.0.0.1:57322/postgres';
+const psql = (query: string) => execFileSync('psql', [DB, '-Atqc', query], { encoding: 'utf8' }).trim();
+// Cada pedido descuenta insumos al entrar y borrarlo no los devuelve: se guarda el stock al empezar y se
+// repone al final (como v018-panel2.spec.ts), para que corridas seguidas no agoten la carta.
+let stockSnapshot = '';
+test.beforeAll(() => {
+  stockSnapshot = psql("select string_agg(id || ':' || stock, ',') from public.supplies");
+});
 // Borra lo que crean estas pruebas (pedidos y captación de "Prueba Playwright").
 test.afterAll(() => {
   for (const query of [
+    "delete from public.supply_moves where order_id in (select id from public.orders where customer_name = 'Prueba Playwright')",
     "delete from public.orders where customer_name = 'Prueba Playwright'",
     "delete from public.leads where name = 'Prueba Playwright'",
     "delete from public.customers where name = 'Prueba Playwright'",
@@ -13,7 +21,11 @@ test.afterAll(() => {
     'update public.restaurant_settings set pickup_enabled = false, store_open = false, store_address = null',
     "update public.coupons c set uses = (select count(*) from public.orders o where o.restaurant_id = c.restaurant_id and o.coupon_code = c.code::text and o.status <> 'cancelado')",
   ])
-    execFileSync('psql', [DB, '-Atqc', query]);
+    psql(query);
+  for (const pair of stockSnapshot.split(',').filter(Boolean)) {
+    const [id, stock] = pair.split(':');
+    psql(`update public.supplies set stock = ${stock} where id = '${id}'`);
+  }
 });
 
 // F4: el sitio real contra Supabase local (base + funciones). Cada corrida usa un celular nuevo.
@@ -30,8 +42,10 @@ async function openCart(page: Page) {
 
 async function enter(page: Page) {
   await page.goto('/?intro=completa');
-  await page.getByRole('button', { name: 'Entrar al sitio' }).click();
+  // El botón de entrar responde de inmediato (D50); la prueba de tiempo está en v018-sitio.spec.ts.
+  await page.locator('#intro button[data-intro-close]').click();
   await expect(page.locator('#intro')).toBeHidden();
+  await expect(page.locator('html')).not.toHaveClass(/is-locked/);
 }
 
 test('bienvenida en modo aviso con captación de cupón', async ({ page }) => {

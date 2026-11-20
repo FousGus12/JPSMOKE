@@ -20,8 +20,8 @@ import { Modal, useToast } from './ui';
 type Mode = 'completa' | 'aviso' | 'ninguna';
 const MODES: Array<[Mode, string, string]> = [
   ['completa', 'Pantalla completa', 'Foto grande del evento con barra de carga. Máximo impacto.'],
-  ['aviso', 'Aviso centrado', 'Ventana pequeña sobre la página; si el evento capta datos, entrega un cupón.'],
-  ['ninguna', 'Nada', 'La página abre directo.'],
+  ['aviso', 'Aviso pequeño', 'Ventana pequeña sobre la página; si el evento capta datos, entrega un cupón.'],
+  ['ninguna', 'Apagada', 'La gente entra directo a la página.'],
 ];
 const LINKS: Array<[string, string]> = [
   ['#carta', 'Carta'],
@@ -37,28 +37,220 @@ const shortDate = (iso: string) =>
     timeZone: 'America/Bogota',
   });
 
-/** Eventos y banners (F7): bienvenida, franja y sección; y solicitudes de cotización (JP on Tour). */
+/** Bienvenida de la página: modo global, evento que se usa, vista previa y avisos. */
+export function Bienvenida({
+  restaurantId,
+  compact = false,
+  version = 0,
+  onChange,
+}: {
+  restaurantId: string;
+  compact?: boolean;
+  /** Súbelo para recargar cuando otro componente cambie eventos. */
+  version?: number;
+  onChange?: () => void;
+}) {
+  const toast = useToast();
+  const [events, setEvents] = useState<EditEvent[]>([]);
+  const [coupons, setCoupons] = useState<EditCoupon[]>([]);
+  const [mode, setMode] = useState<Mode>('completa');
+  const [editing, setEditing] = useState<EditEvent | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  const reload = useCallback(
+    () =>
+      Promise.all([loadEvents(restaurantId), loadCoupons(restaurantId), loadIntroMode(restaurantId)])
+        .then(([list, couponList, intro]) => {
+          setEvents(list);
+          setCoupons(couponList);
+          setMode(intro);
+          setLoaded(true);
+        })
+        .catch((failure: unknown) =>
+          toast(failure instanceof Error ? failure.message : 'No pudimos cargar.'),
+        ),
+    [restaurantId, toast],
+  );
+  useEffect(() => {
+    void reload();
+  }, [reload, version]);
+
+  const run = async (work: Promise<void>, message: string) => {
+    try {
+      await work;
+      toast(message);
+    } catch (failure) {
+      toast(failure instanceof Error ? failure.message : 'No se pudo guardar.');
+    }
+    await reload();
+    onChange?.();
+  };
+  const changeMode = (key: Mode) => {
+    setMode(key);
+    const label = MODES.find(([value]) => value === key)?.[1] ?? '';
+    void run(
+      saveIntroMode(restaurantId, key),
+      key === 'ninguna' ? 'Bienvenida apagada' : `Bienvenida: ${label}`,
+    );
+  };
+
+  const intro = events.find((event) => event.show_intro) ?? null;
+  const coupon = intro?.captures_leads ? coupons.find((item) => item.id === intro.coupon_id) : undefined;
+  const expired = intro ? intro.ends_on < today() : false;
+  const off = mode === 'ninguna';
+
+  return (
+    <section className="card bienvenida" data-testid="bienvenida">
+      <div className="card-head">
+        <div>
+          <h2>Bienvenida</h2>
+          <p>
+            {off
+              ? 'Apagada: la gente entra directo a la página.'
+              : 'Se muestra una vez por visita al abrir la página.'}
+          </p>
+        </div>
+        <button
+          className={`btn btn-sm ${off ? 'btn-primary' : 'btn-soft'}`}
+          type="button"
+          onClick={() => changeMode(off ? 'completa' : 'ninguna')}
+        >
+          {off ? 'Encender bienvenida' : 'Apagar bienvenida'}
+        </button>
+      </div>
+      <div className="modes" role="radiogroup" aria-label="Modo de la bienvenida">
+        {MODES.map(([key, label, detail]) => (
+          <label className={`mode ${mode === key ? 'is-on' : ''}`} key={key}>
+            <input
+              type="radio"
+              name="intro-mode"
+              value={key}
+              checked={mode === key}
+              onChange={() => changeMode(key)}
+            />
+            <b>{label}</b>
+            <small>{detail}</small>
+            {key !== 'ninguna' ? (
+              <a href={`/?intro=${key}`} target="_blank" rel="noopener">
+                Ver ejemplo ↗
+              </a>
+            ) : null}
+          </label>
+        ))}
+      </div>
+
+      {off ? null : (
+        <div className="bienvenida-ev">
+          {!loaded ? null : intro ? (
+            <>
+              {expired ? (
+                <p className="note bienvenida-warn" role="alert">
+                  La bienvenida ya pasó su fecha; cámbiala o apágala.
+                </p>
+              ) : null}
+              <div className="bienvenida-info">
+                <div>
+                  <small className="muted">Evento que se usa</small>
+                  <h3 className="ev-title">{intro.title}</h3>
+                  {compact ? null : (
+                    <dl className="bienvenida-data">
+                      <dt>Fecha visible</dt>
+                      <dd>{intro.kicker || 'Sin fecha visible'}</dd>
+                      <dt>Texto</dt>
+                      <dd>{intro.body || 'Sin texto'}</dd>
+                      <dt>Botón</dt>
+                      <dd>{intro.cta_label}</dd>
+                      <dt>Cupón</dt>
+                      <dd>{coupon ? `${coupon.code} · ${coupon.title}` : 'No entrega cupón'}</dd>
+                      <dt>Fechas</dt>
+                      <dd>
+                        {shortDate(intro.starts_on)} → {shortDate(intro.ends_on)}
+                      </dd>
+                    </dl>
+                  )}
+                </div>
+                <button className="btn btn-soft btn-sm" type="button" onClick={() => setEditing(intro)}>
+                  Editar bienvenida
+                </button>
+              </div>
+              {compact ? null : (
+                <div className={`bienvenida-preview mode-${mode}`} aria-label="Vista previa">
+                  {intro.image_path ? <img src={photoUrl(intro.image_path) ?? ''} alt="" /> : null}
+                  <div>
+                    {intro.kicker ? <small>{intro.kicker}</small> : null}
+                    <b>{intro.title}</b>
+                    {intro.body ? <p>{intro.body}</p> : null}
+                    {coupon ? <span className="st">Cupón {coupon.code}</span> : null}
+                    <span className="btn btn-primary btn-sm">{intro.cta_label}</span>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="note bienvenida-warn">
+              Ningún evento está marcado como bienvenida, así que la gente entra directo. Elige uno:
+            </p>
+          )}
+          {loaded && events.length > 0 ? (
+            <div className="field">
+              <label htmlFor="bienvenida-ev">{intro ? 'Usar otro evento' : 'Evento de bienvenida'}</label>
+              <select
+                className="select"
+                id="bienvenida-ev"
+                value={intro?.id ?? ''}
+                onChange={(change) =>
+                  void run(
+                    setIntroEvent(change.target.value || null),
+                    change.target.value ? 'Bienvenida actualizada' : 'Sin bienvenida',
+                  )
+                }
+              >
+                <option value="">Ninguno</option>
+                {events.map((event) => (
+                  <option key={event.id} value={event.id}>
+                    {event.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          <p className="muted small">Se ve en la página al publicar (Editar página → Publicar).</p>
+        </div>
+      )}
+
+      {editing ? (
+        <EventForm
+          restaurantId={restaurantId}
+          event={editing}
+          position={events.length}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            void reload();
+            onChange?.();
+          }}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+/** Eventos y banners (F7): franja y sección; la bienvenida usa el mismo componente compacto. */
 export function Eventos({ restaurantId }: { restaurantId: string }) {
   const toast = useToast();
   const [events, setEvents] = useState<EditEvent[]>([]);
   const [coupons, setCoupons] = useState<EditCoupon[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [mode, setMode] = useState<Mode>('completa');
   const [editing, setEditing] = useState<EditEvent | 'nuevo' | null>(null);
+  const [version, setVersion] = useState(0);
 
   const reload = useCallback(
     () =>
-      Promise.all([
-        loadEvents(restaurantId),
-        loadCoupons(restaurantId),
-        loadQuotes(restaurantId),
-        loadIntroMode(restaurantId),
-      ])
-        .then(([list, couponList, quoteList, intro]) => {
+      Promise.all([loadEvents(restaurantId), loadCoupons(restaurantId), loadQuotes(restaurantId)])
+        .then(([list, couponList, quoteList]) => {
           setEvents(list);
           setCoupons(couponList);
           setQuotes(quoteList);
-          setMode(intro);
+          setVersion((value) => value + 1);
         })
         .catch((failure: unknown) =>
           toast(failure instanceof Error ? failure.message : 'No pudimos cargar.'),
@@ -85,40 +277,7 @@ export function Eventos({ restaurantId }: { restaurantId: string }) {
 
   return (
     <>
-      <section className="card">
-        <div className="card-head">
-          <div>
-            <h2>Al abrir la página por primera vez</h2>
-            <p>
-              Se muestra una vez por visita con el evento marcado como "Bienvenida". Sale en la página al
-              publicar.
-            </p>
-          </div>
-        </div>
-        <div className="modes" role="radiogroup" aria-label="Bienvenida">
-          {MODES.map(([key, label, detail]) => (
-            <label className={`mode ${mode === key ? 'is-on' : ''}`} key={key}>
-              <input
-                type="radio"
-                name="intro-mode"
-                value={key}
-                checked={mode === key}
-                onChange={() => {
-                  setMode(key);
-                  void run(saveIntroMode(restaurantId, key), `Bienvenida: ${label}`);
-                }}
-              />
-              <b>{label}</b>
-              <small>{detail}</small>
-              {key !== 'ninguna' ? (
-                <a href={`/?intro=${key}`} target="_blank" rel="noopener">
-                  Ver ejemplo ↗
-                </a>
-              ) : null}
-            </label>
-          ))}
-        </div>
-      </section>
+      <Bienvenida restaurantId={restaurantId} compact version={version} onChange={() => void reload()} />
 
       <div className="toolbar">
         <div className="note grow">

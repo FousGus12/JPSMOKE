@@ -1,6 +1,6 @@
 # HANDOFF · JP Smoke
 
-> **Última actualización:** 2026-11-14 (montaje D36, equipo D38, auditoría D39, animaciones en celular, adiciones por plato D40) · **Roadmap:** v0.17 · **Git:** `main` y `produccion` en GitHub (PR #1 unido)
+> **Última actualización:** 2026-11-19 (v0.18: pedido de Gustavo D41–D54, modo subagentes con Fable 5.2) · **Roadmap:** v0.18 · **Git:** rama `mejoras-gustavo-2026-11` SIN commit (pendiente de aprobación); `main` y `produccion` siguen en D40
 >
 > **Para retomar en otro chat** (copiar tal cual):
 >
@@ -11,7 +11,8 @@
 > 3. Corre `scripts/verify.sh` y resúmeme en 3 líneas dónde estamos y qué sigue.
 > Sigue ~/Developer/_manual/MANUAL-PROYECTOS.md (y aliméntalo). Montaje aprobado (D36): sigue docs/montaje.md desde donde dice HANDOFF §3.
 > Al cerrar cada bloque actualiza HANDOFF.md y ROADMAP.md.
-> Lo que necesito ahora es:
+> Modo de trabajo: subagentes con Fable 5.2 como planificador (CLAUDE.md). Plan v0.18 en docs/plan-v0.18.md; pendientes de Gustavo en docs/backlog-gustavo.md.
+Lo que necesito ahora es:
 > [pedido]
 > ```
 
@@ -40,6 +41,25 @@ Micro app de pedidos para restaurantes, empezando por **JP Smoke** (hamburguesas
 | F10 Punto físico y versión final | Hecha en local (D33, D34): punto físico y recoger en tienda, revisión de seguridad, respaldo probado, guía de montaje, `verify:release` en verde |
 | Auditoría 2026-11-02 | Skill `security-audit` de Cloudflare, 6 fases, 51 agentes: 4 hallazgos confirmados en local y corregidos, 2 mitigados, 1 rechazado (`docs/seguridad/auditoria-2026-11-02.md`, D35) |
 | **Montaje en producción** | **Siguiente, cuando Gustavo apruebe** (`docs/montaje.md`) |
+
+## 2b. Bloque v0.18 (2026-11-19) — hecho en local, sin publicar
+
+Rama `mejoras-gustavo-2026-11` (desde `origin/main` = producción). Plan de Fable en `docs/plan-v0.18.md`; reportes en `docs/backlog-gustavo.md`.
+
+- **Base (4 migraciones `20261119120000…120300`)**: enums (`inicial`, `stock_bajo`); pedidos (anular hasta entregado solo admin, `is_test` solo admin, `voided_from`, bloqueo de fila en `set_order_status`; frenados con nombre, últimos 4, zona, total estimado con precios del servidor, productos, borrado a 30 días; `sin_plato`; seguimiento público sin motivo interno); inventario (inicial, costo/base/fecha, margen objetivo, aviso `stock_bajo` a la cola de WhatsApp máx. 1 cada 6 h, política de ajustes incluye inventario); admin y cobertura (`customers_list`, `audit_list`, `locality_code` con disparador, `store_lat/lng`). pgTAP `18_v018.sql` (67).
+- **Edge Functions**: `crear-pedido` (detalle de frenados con líneas, Turnstile antes del cupo por IP), `_shared/mensajes.ts` (sin zod, lo usa el sitio), plantilla `stock_bajo`.
+- **Sitio**: inicio de una pantalla en celular (D50), barra inferior fija sin blur y oculta con teclado, `is-locked`, `.reveal` robusto; Turnstile esperado/renovado/reseteado en pedido, cupón y cotización (antes cupón y cotización siempre caían como robot) y `startedAt` desde la carga (el mínimo de 4 s bloqueaba a clientes con datos recordados); adiciones solo con plato (D47); mapa SVG de cobertura con localidades IDECA (`src/data/bogota-localidades.json`, CC BY 4.0) + verificador por ubicación o localidad, también en el pedido (D44); fotos AVIF/WebP por tamaño (`src/lib/images.ts`, `Photo.astro`), fotos de muestra recomprimidas; bienvenida con botón inmediato y una vez al día (D51); carga en vivo en una tanda; seguimiento animado SVG+CSS (D52, `seguimiento-arte.ts`, `seguimiento.css`).
+- **Panel**: menú con grupos Contenido y Administración (D41) y vistas Bienvenida, Clientes, Ajustes (canales Rappi/DiDi, horario, redes), Seguridad (frenados, auditoría, dos pasos); anular con modal y entregados compactos (D42); tablero arrastrable con confirmación al saltar o entregar (D53); Recibo con logo, tirilla 58/80 mm, hoja e imagen (D54); inventario Inicial, costos, recetas con margen y precio sugerido (D46, D49); WhatsApp en lenguaje de dueño; arranque en paralelo y vistas con carga diferida (D51); aviso sonoro de insumo bajo.
+- **Investigación**: Rappi tiene API solo para integradores aprobados; DiDi no publica API (D45: enlaces + registro manual + CSV cuando haya muestra). WhatsApp oficial no es "gratis": plantillas utility se cobran; respuestas de servicio con cupo mensual sin costo, cifra por confirmar en la cuenta de Meta (D48 abierta).
+- **Verificación**: ver §2c (release en verde).
+
+## 2c. Verificación v0.18 (2026-11-19, local)
+
+`scripts/verify.sh release` en verde: base limpia, tipos, lint, formato, 156 unitarias, sin datos sensibles (116 archivos), build, 266 pgTAP, simultáneos (1 de 2), **e2e 164 pasan / 10 saltados a propósito** (escritorio, Android e iPhone simulados), 7 Edge Functions.
+**Turnstile probado en local con las claves de prueba oficiales de Cloudflare** (developers.cloudflare.com/turnstile/troubleshooting/testing; solo en archivos ignorados y restaurados): pedido con datos recordados confirmado en ~1 s pasa (antes caía como robot), el token viaja y el widget sobrevive Datos→Confirmar, cupón y cotización ya no caen como robot, y con la clave que bloquea sale el mensaje sin enviar. Escritorio y WebKit.
+Revisión visual con capturas (iPhone, Pixel, 360×640, escritorio): 11 defectos corregidos (inicio 360×640, avisos sobre modales, tablero cortado, recibo, recetas, Mi cuenta, fecha del recibo, Canales, Inventario en celular, coma en seguimiento).
+No probado aún: iPhone real (iOS 26), geolocalización y Permissions-Policy (solo en vista previa de Vercel), reto interactivo de Turnstile en Safari, impresión en tirilla, `navigator.share`. Pendiente menor: WebKit reporta violaciones CSP `style-src-attr` también en el build normal (Chromium no); investigar su origen. Detalle conocido: en 360×640 el inicio móvil mide ~20 px más que la pantalla.
+Trampas nuevas: un e2e que crea pedidos debe reponer inventario (borrar `supply_moves` no devuelve stock); Playwright WebKit no reporta `maxTouchPoints`; `trusted::text` en Postgres es `'true'`; el `aria-live` del tablero duplica textos del toast (buscar dentro de `.toast`).
 
 ## 3. Infraestructura
 
@@ -118,15 +138,21 @@ Micro app de pedidos para restaurantes, empezando por **JP Smoke** (hamburguesas
 
 ## 7. Decisiones recientes (detalle en ROADMAP §14)
 
+**v0.18:** D41 menú y Administración · D42 anular hasta el final · D43 frenados con detalle · D44 cobertura con mapa · D45 Rappi/DiDi · D46 inventario Inicial y alerta · D47 adiciones solo con plato · D48 WhatsApp real (abierta) · D49 costos y margen · D50 inicio de una pantalla en celular · D51 carga más rápida · D52 seguimiento animado · D53 tablero arrastrable · D54 recibo.
+
+
 D24 base compartida · D25 todo local · D26 pedido del cliente en F4 · D27 rojo de texto aparte (`--accent-text`) · ambiente más suave (tokens `--glow` 13 %, `--smoke` 0,22, `--grain` 0,025; antes 22 %, 0,35 y 0,04) · D28 qué se ve en vivo y qué al publicar · D29 ventas y caja · **D30 inventario** (se descuenta al entrar el pedido, vuelve al cancelar) · **D31 Better Auth descartado** · **D32 WhatsApp** (modos, cola sin datos personales, JP Smoke en prueba) · **D33 punto físico y recoger en tienda** · **D34 mínimo privilegio para anon** · **D35 correcciones de la auditoría** · **D36 montaje** · **D38 equipo gestionable** · **D39 correcciones auditoría run-2** (informe en `~/security-audit-skill/jp-smoke/run-2/`; pendientes por validar: XFF del gateway de Supabase). Ambiente del vino bajado (tokens `--glow`, `--smoke`, `--grain`). Descartado: cupón de cumpleaños (D22), verificación del celular por código (D13).
 
 ## 8. Siguientes pasos
 
-1. **Montaje cuando Gustavo diga**: seguir `docs/montaje.md` paso a paso (cada paso 🔒 con su aprobación).
-2. **Antes de producción** (notas de la auditoría, no son hallazgos): caducidad del enlace con token (7 días), guardia de "último admin", fallar si falta `IP_SALT` en remoto, `off-local` solo en local, grant de UPDATE por columnas en `restaurant_settings`, verificar `X-Forwarded-For` en staging (`docs/montaje.md` §8).
-3. **Al abrir el local**: Panel → Editar página → Punto físico (dirección, mapa, horario, recoger) y Publicar.
-4. **Mejoras anotadas**: costo de insumos y margen por producto; reordenar productos arrastrando; logo y colores por restaurante (asistente de arranque §17.1); importar ventas de Rappi/DiDi por CSV.
-5. **WhatsApp real** (cuando Gustavo apruebe el costo): cuenta de WhatsApp Business en Meta, número, token, registrar las 4 plantillas (texto en Panel → WhatsApp → "Así se ven") y pasar el modo a Activo.
+1. **Gustavo aprueba commit y PR** de `mejoras-gustavo-2026-11`.
+2. **Despliegue en orden obligatorio** (el build lee columnas nuevas): migraciones `20261119120000…120300` al remoto con simulación (skill `migracion-remota`; confirmar en remoto los nombres `whatsapp_messages_check`, la política "equipo con apartado edita ajustes" y las firmas viejas de `register_blocked`, `register_supply`, `private.log_blocked`) → Edge Functions públicas (`crear-pedido`, `whatsapp`, `captar`, `cotizar`, `seguir-pedido`) → vista previa de Vercel → producción (skill `desplegar`).
+3. **En vista previa / iPhone real (iOS 26)** (Turnstile solo valida en `jpsmoke.vercel.app`: en vista previa los pedidos no pasan salvo que Gustavo agregue ese hostname al widget; confirmarlo en producción, y la fila del frenado del 19-nov en Seguridad mostrará el motivo real): Turnstile en pedido, cupón y cotización; "Usar mi ubicación" (Permissions-Policy `geolocation=(self)`); inicio, barra inferior con teclado; bienvenida una vez al día; seguimiento animado; arrastre con pulsación larga; recibo impreso 58/80 mm y compartir.
+4. **Tras publicar**: Panel → Editar página → Punto físico (coordenadas) y localidad de cada zona; Ajustes → Canales (Rappi visible); Inventario → costos e Inicial; apagar o cambiar la bienvenida vencida (dice 15 de noviembre).
+5. **Dominio** `jpsmoke.co` (Gustavo lo compra en mi.com.co; trasladar a Cloudflare Registrar antes de renovar) con `panel.jpsmoke.co` para el panel: Vercel, CORS, Auth redirects, `site_url`, Turnstile (hostnames). D4 (Vercel Pro) sigue abierta.
+6. **Propuestas de la revisión de Fable** (no construidas): idempotencia en `crear-pedido`, reversar cupón al anular, repetir pedido, importar CSV Rappi/DiDi, aviso al cliente al anular, elegir devolver insumos al anular entregado, caducidad automática de bienvenida, deshacer al mover a Entregado, cancelados de hoy, pausar pedidos X minutos, lista de compras desde insumos bajos, acciones desde un frenado, exportar clientes con consentimiento, comanda de cocina sin precios, hora estimada dinámica, pedido en un solo paso (medir primero).
+7. **Contenido editable (backlog #8, pendiente de aprobación)**: títulos de sección, imágenes de Promoción y Tour, cierre, botones del inicio ("punto físico muy pronto" debería depender de `store_open`), textos del cupón y pantalla de reseñas.
+8. **Limpieza**: reglas viejas de seguimiento en `sitio.css` (~2780), duplicado del logo en `Recibo.tsx`, optimización de políticas RLS (`(select …)`) cuando crezca el volumen, miniaturas del carrito con versión pequeña.
 
 ## 9. Pendientes de Gustavo
 

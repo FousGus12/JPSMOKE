@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type SyntheticEvent } from 'react';
 import { formatCop as money } from '../core/money';
 import { CHANNEL_LABEL, type OrderChannel } from '../core/orders';
-import { percentChange, toCsv, weeklyText, type WeeklyReport } from '../core/sales';
+import { percentChange, toCsv, voidedAfterClose, weeklyText, type WeeklyReport } from '../core/sales';
 import { Columns, Rows } from './charts';
 import {
   closeCash,
@@ -212,6 +212,7 @@ export function Ventas({ restaurant }: { restaurant: string }) {
               )}
             </section>
           </div>
+          <VoidedAfterClose list={sales.voided_after_close} />
           {sales.blocked ? (
             <div className="note">
               🛡️ <b>{sales.blocked} pedidos falsos frenados</b> en el periodo.
@@ -226,6 +227,47 @@ export function Ventas({ restaurant }: { restaurant: string }) {
         {weekly ? <Weekly report={weekly} restaurant={restaurant} /> : null}
       </div>
     </>
+  );
+}
+
+/** Entregados anulados cuando la caja de su día ya estaba cerrada (D42). */
+function VoidedAfterClose({ list }: { list: SalesSummary['voided_after_close'] }) {
+  const { rows, total } = voidedAfterClose(list);
+  if (!rows.length) return null;
+  return (
+    <section className="card voided-after" aria-label="Anulados después del cierre de caja">
+      <div className="card-head">
+        <div>
+          <h2>Anulados después del cierre de caja</h2>
+          <p>
+            {rows.length} {rows.length === 1 ? 'pedido' : 'pedidos'} · {money(total)}. Ya no suman en ventas;
+            el cierre guardado de ese día no cambia.
+          </p>
+        </div>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Pedido</th>
+              <th>Día</th>
+              <th className="num">Total</th>
+              <th>Motivo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.code}>
+                <td>{row.code}</td>
+                <td>{dayLabel(row.day)}</td>
+                <td className="num">{money(row.total)}</td>
+                <td className="reason">{row.reason ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

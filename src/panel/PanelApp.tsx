@@ -1,22 +1,24 @@
 // Panel del negocio (F5): ingreso con dos pasos, resumen y tablero de pedidos en vivo.
 // Las demás pantallas (ventas, carta, promociones, eventos, editor, clientes, ajustes) llegan en F6–F8.
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Component,
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from 'react';
 import { formatCop as money } from '../core/money';
-import { CHANNEL_LABEL } from '../core/orders';
+import { CHANNEL_LABEL, formatPhone } from '../core/orders';
 import { currentStep, onAuthChange, signOut, type AuthStep, type Staff } from './auth';
 import { loadOrders, loadSummary, watchOrders, type PanelOrder, type Summary } from './data';
 import { ChangeTemp, Credentials, Enroll, Verify } from './Login';
 import { ManualOrder } from './ManualOrder';
 import { Pedidos } from './Pedidos';
-import { Carta } from './Carta';
-import { EditarPagina } from './EditarPagina';
-import { Promociones } from './Promociones';
-import { Eventos } from './Eventos';
-import { Ventas } from './Ventas';
-import { Inventario } from './Inventario';
-import { WhatsApp } from './WhatsApp';
 import { Resumen } from './Resumen';
-import { Equipo, MiCuenta } from './Equipo';
 import { ToastProvider, beep, notify, useToast } from './ui';
 
 const IDLE_MS = 30 * 60_000;
@@ -30,17 +32,40 @@ type View =
   | 'sitio'
   | 'promos'
   | 'eventos'
-  | 'equipo';
-// Apartados del menú (D38): la base decide; el menú solo muestra lo que la persona puede usar.
-const NAV: Array<{ view: View; icon: string; group?: string }> = [
+  | 'bienvenida'
+  | 'equipo'
+  | 'clientes'
+  | 'ajustes'
+  | 'seguridad';
+// Apartados del menú (D41): la base decide; el menú solo muestra lo que la persona puede usar.
+const FIXED: Array<{ view: View; icon: string }> = [
   { view: 'ventas', icon: '📈' },
   { view: 'inventario', icon: '📦' },
   { view: 'whatsapp', icon: '💬' },
-  { view: 'carta', icon: '🍔', group: 'Contenido' },
-  { view: 'sitio', icon: '✏️', group: 'Contenido' },
-  { view: 'promos', icon: '🎟️', group: 'Contenido' },
-  { view: 'eventos', icon: '📣', group: 'Contenido' },
-  { view: 'equipo', icon: '👥', group: 'Administración' },
+];
+type GroupId = 'contenido' | 'administracion';
+const GROUPS: Array<{ id: GroupId; label: string; items: Array<{ view: View; icon: string }> }> = [
+  {
+    id: 'contenido',
+    label: 'Contenido',
+    items: [
+      { view: 'carta', icon: '🍔' },
+      { view: 'sitio', icon: '✏️' },
+      { view: 'promos', icon: '🎟️' },
+      { view: 'eventos', icon: '📣' },
+      { view: 'bienvenida', icon: '👋' },
+    ],
+  },
+  {
+    id: 'administracion',
+    label: 'Administración',
+    items: [
+      { view: 'equipo', icon: '👥' },
+      { view: 'clientes', icon: '👤' },
+      { view: 'ajustes', icon: '⚙️' },
+      { view: 'seguridad', icon: '🔒' },
+    ],
+  },
 ];
 const TITLES: Record<View, string> = {
   resumen: 'Resumen',
@@ -52,12 +77,94 @@ const TITLES: Record<View, string> = {
   sitio: 'Editar página',
   promos: 'Promociones y cupones',
   eventos: 'Eventos y banners',
+  bienvenida: 'Bienvenida',
   equipo: 'Equipo y permisos',
+  clientes: 'Clientes',
+  ajustes: 'Ajustes',
+  seguridad: 'Seguridad',
 };
-const SOON: Array<[string, string]> = [
-  ['👤', 'Clientes'],
-  ['⚙️', 'Ajustes y seguridad'],
-];
+const GROUPS_KEY = 'jps-panel-grupos';
+
+// Apartados con carga diferida: Resumen y Pedidos (base de todo operador) van en el trozo inicial.
+// La descarga no se cachea si falla, para poder reintentar.
+type ViewModule = { default: ComponentType<any> }; // eslint-disable-line @typescript-eslint/no-explicit-any
+function makeView(factory: () => Promise<ViewModule>) {
+  let pending: Promise<ViewModule> | undefined;
+  const load = () =>
+    (pending ??= factory().catch((failure: unknown) => {
+      pending = undefined;
+      throw failure;
+    }));
+  const def = {
+    Comp: lazy(load),
+    preload: () => void load().catch(() => undefined),
+    reset: () => {
+      def.Comp = lazy(load);
+    },
+  };
+  return def;
+}
+const VIEWS = {
+  ventas: makeView(() => import('./Ventas').then((mod) => ({ default: mod.Ventas }))),
+  inventario: makeView(() => import('./Inventario').then((mod) => ({ default: mod.Inventario }))),
+  whatsapp: makeView(() => import('./WhatsApp').then((mod) => ({ default: mod.WhatsApp }))),
+  carta: makeView(() => import('./Carta').then((mod) => ({ default: mod.Carta }))),
+  sitio: makeView(() => import('./EditarPagina').then((mod) => ({ default: mod.EditarPagina }))),
+  promos: makeView(() => import('./Promociones').then((mod) => ({ default: mod.Promociones }))),
+  eventos: makeView(() => import('./Eventos').then((mod) => ({ default: mod.Eventos }))),
+  bienvenida: makeView(() => import('./Eventos').then((mod) => ({ default: mod.Bienvenida }))),
+  equipo: makeView(() => import('./Equipo').then((mod) => ({ default: mod.Equipo }))),
+  clientes: makeView(() => import('./Clientes').then((mod) => ({ default: mod.Clientes }))),
+  ajustes: makeView(() => import('./Ajustes').then((mod) => ({ default: mod.Ajustes }))),
+  seguridad: makeView(() => import('./Seguridad').then((mod) => ({ default: mod.Seguridad }))),
+  cuenta: makeView(() => import('./Equipo').then((mod) => ({ default: mod.MiCuenta }))),
+};
+type LazyDef = ReturnType<typeof makeView>;
+const warm = (view: View) => {
+  if (view in VIEWS) VIEWS[view as keyof typeof VIEWS].preload();
+};
+
+class ViewBoundary extends Component<
+  { def: LazyDef; fallback: ReactNode; children: (View: ComponentType<any>) => ReactNode }, // eslint-disable-line @typescript-eslint/no-explicit-any
+  { failed: boolean }
+> {
+  override state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  retry = () => {
+    this.props.def.reset();
+    this.setState({ failed: false });
+  };
+  override render() {
+    if (this.state.failed)
+      return (
+        <div className="view-error" role="alert">
+          <p className="muted">
+            No se pudo cargar este apartado. Si se publicó una versión nueva del panel, recárgalo.
+          </p>
+          <div className="btn-row">
+            <button className="btn btn-soft btn-sm" type="button" onClick={this.retry}>
+              Reintentar
+            </button>
+            <button className="btn btn-primary btn-sm" type="button" onClick={() => location.reload()}>
+              Recargar el panel
+            </button>
+          </div>
+        </div>
+      );
+    return <Suspense fallback={this.props.fallback}>{this.props.children(this.props.def.Comp)}</Suspense>;
+  }
+}
+
+function readGroups(): Record<GroupId, boolean> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(GROUPS_KEY) ?? '{}') as Partial<Record<GroupId, boolean>>;
+    return { contenido: raw.contenido === true, administracion: raw.administracion === true };
+  } catch {
+    return { contenido: false, administracion: false };
+  }
+}
 
 export function PanelApp() {
   return (
@@ -106,15 +213,23 @@ function Gate() {
 function Shell({ staff }: { staff: Staff }) {
   const toast = useToast();
   const isAdmin = staff.role === 'admin';
-  const can = (target: View) =>
-    target === 'resumen' ||
-    target === 'pedidos' ||
-    isAdmin ||
-    (target !== 'equipo' && staff.permissions.includes(target));
-  const [view, setView] = useState<View>(() => {
+  const perms: string[] = staff.permissions;
+  const can = (target: View) => {
+    if (target === 'resumen' || target === 'pedidos') return true;
+    if (target === 'equipo' || target === 'clientes' || target === 'seguridad') return isAdmin;
+    if (target === 'ajustes') return isAdmin || perms.includes('sitio');
+    if (target === 'bienvenida') return isAdmin || perms.includes('eventos') || perms.includes('promos');
+    return isAdmin || perms.includes(target);
+  };
+  const fromHash = (): View | null => {
     const hash = location.hash.slice(1) as View;
-    return hash in TITLES && can(hash) ? hash : 'resumen';
+    return hash in TITLES && can(hash) ? hash : null;
+  };
+  const [view, setView] = useState<View>(() => {
+    return fromHash() ?? 'resumen';
   });
+  const [groups, setGroups] = useState(readGroups);
+  const alerted = useRef<Set<string> | null>(null);
   const [account, setAccount] = useState(false);
   const [orders, setOrders] = useState<PanelOrder[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -124,6 +239,28 @@ function Shell({ staff }: { staff: Staff }) {
   const [manual, setManual] = useState(false);
   const [bell, setBell] = useState(() => ('Notification' in window ? Notification.permission : 'denied'));
   const known = useRef<Set<string> | null>(null);
+  const [business, setBusiness] = useState<{ phone?: string; address?: string }>({});
+  const [newVersion, setNewVersion] = useState(false);
+
+  // Insumo bajo (D46): mismo aviso que un pedido nuevo, una vez por insumo y sesión. La primera
+  // carga solo registra los que ya estaban bajos para no sonar al entrar.
+  const alertSupplies = useCallback(
+    (sum: Summary) => {
+      const low = sum.low_supplies ?? [];
+      if (alerted.current) {
+        const added = low.filter((name) => !alerted.current?.has(name));
+        if (added.length) {
+          beep();
+          for (const name of added) {
+            toast(`⚠️ Insumo por agotarse: ${name}`);
+            notify('Insumo por agotarse', name, `insumo-${name}`);
+          }
+        }
+      }
+      alerted.current = new Set([...(alerted.current ?? []), ...low]);
+    },
+    [toast],
+  );
 
   const reload = useCallback(async () => {
     try {
@@ -145,13 +282,62 @@ function Shell({ staff }: { staff: Staff }) {
           }
         }
       }
+      alertSupplies(sum);
       known.current = new Set(list.map((order) => order.id));
       setOrders(list);
       setSummary(sum);
     } catch (failure) {
       toast(failure instanceof Error ? failure.message : 'No pudimos actualizar.');
     }
-  }, [toast]);
+  }, [toast, alertSupplies]);
+
+  // Revisión ligera de insumos cada 2 min con la pestaña visible (el inventario también baja por
+  // ajustes, no solo por pedidos). Reusa el mismo registro por sesión: no repite sonidos.
+  useEffect(() => {
+    const check = () => {
+      if (document.hidden) return;
+      loadSummary()
+        .then((sum) => {
+          alertSupplies(sum);
+          setSummary(sum);
+        })
+        .catch(() => undefined);
+    };
+    const timer = setInterval(check, 120_000);
+    const onVisible = () => {
+      if (!document.hidden) check();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [alertSupplies]);
+
+  // Datos del negocio para el recibo (D54): una sola lectura de los ajustes. El módulo del editor
+  // se pide aparte para no engordar la carga inicial del panel.
+  useEffect(() => {
+    let alive = true;
+    void import('./editor')
+      .then(({ loadSettings }) => loadSettings(staff.restaurant_id))
+      .then((settings) => {
+        if (!alive) return;
+        const phone = settings.whatsapp ? formatPhone(settings.whatsapp.replace(/^57(?=\d{10}$)/, '')) : '';
+        const address = settings.store_address?.trim() ?? '';
+        setBusiness({ ...(phone ? { phone } : {}), ...(address ? { address } : {}) });
+      })
+      .catch(() => undefined); // sin datos el recibo sale solo con el nombre
+    return () => {
+      alive = false;
+    };
+  }, [staff.restaurant_id]);
+
+  // Tras un despliegue los trozos viejos ya no existen: se sugiere recargar.
+  useEffect(() => {
+    const onPreloadError = () => setNewVersion(true);
+    addEventListener('vite:preloadError', onPreloadError);
+    return () => removeEventListener('vite:preloadError', onPreloadError);
+  }, []);
 
   useEffect(() => {
     void reload();
@@ -164,8 +350,45 @@ function Shell({ staff }: { staff: Staff }) {
   }, [reload, staff.restaurant_id]);
 
   useEffect(() => {
-    location.hash = view;
+    if (location.hash.slice(1) !== view) location.hash = view;
   }, [view]);
+
+  // Enlaces con #vista (p. ej. desde el Resumen) y botones atrás/adelante.
+  useEffect(() => {
+    const onHash = () => {
+      const next = fromHash();
+      if (next) setView(next);
+    };
+    addEventListener('hashchange', onHash);
+    return () => removeEventListener('hashchange', onHash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staff]);
+
+  // El grupo de la vista actual se abre solo (ajuste durante el render al cambiar de vista).
+  const [seenView, setSeenView] = useState(view);
+  if (seenView !== view) {
+    setSeenView(view);
+    const group = GROUPS.find((item) => item.items.some((entry) => entry.view === view));
+    if (group && !groups[group.id]) setGroups({ ...groups, [group.id]: true });
+  }
+  // Y al entrar directo a una vista de un grupo.
+  const [seeded, setSeeded] = useState(false);
+  if (!seeded) {
+    setSeeded(true);
+    const group = GROUPS.find((item) => item.items.some((entry) => entry.view === view));
+    if (group && !groups[group.id]) setGroups({ ...groups, [group.id]: true });
+  }
+
+  const toggleGroup = (id: GroupId) =>
+    setGroups((current) => {
+      const next = { ...current, [id]: !current[id] };
+      try {
+        localStorage.setItem(GROUPS_KEY, JSON.stringify(next));
+      } catch {
+        /* sin almacenamiento */
+      }
+      return next;
+    });
 
   const go = (next: View) => {
     setView(next);
@@ -205,33 +428,56 @@ function Shell({ staff }: { staff: Staff }) {
             <span className="ico">🔥</span>Pedidos
             {waiting ? <span className="badge">{waiting}</span> : null}
           </button>
-          {NAV.filter((item) => can(item.view)).map((item, index, list) => (
-            <Fragment key={item.view}>
-              {item.group && item.group !== list[index - 1]?.group ? (
-                <div className="sep">{item.group}</div>
-              ) : null}
-              <button
-                type="button"
-                aria-current={view === item.view ? 'page' : undefined}
-                onClick={() => go(item.view)}
-              >
-                <span className="ico">{item.icon}</span>
-                {TITLES[item.view]}
-              </button>
-            </Fragment>
+          {FIXED.filter((item) => can(item.view)).map((item) => (
+            <button
+              type="button"
+              key={item.view}
+              aria-current={view === item.view ? 'page' : undefined}
+              onPointerEnter={() => warm(item.view)}
+              onPointerDown={() => warm(item.view)}
+              onFocus={() => warm(item.view)}
+              onClick={() => go(item.view)}
+            >
+              <span className="ico">{item.icon}</span>
+              {TITLES[item.view]}
+            </button>
           ))}
-          {isAdmin ? (
-            <>
-              <div className="sep">Próximas fases</div>
-              {SOON.map(([icon, label]) => (
-                <button type="button" disabled key={label}>
-                  <span className="ico">{icon}</span>
-                  {label}
-                  <span className="nav-soon">Pronto</span>
+          {GROUPS.map((group) => {
+            const items = group.items.filter((item) => can(item.view));
+            if (!items.length) return null;
+            return (
+              <div key={group.id}>
+                <button
+                  type="button"
+                  className="nav-group-head"
+                  aria-expanded={groups[group.id]}
+                  aria-controls={`nav-${group.id}`}
+                  onClick={() => toggleGroup(group.id)}
+                >
+                  {group.label}
+                  <span className="chev" aria-hidden="true">
+                    ›
+                  </span>
                 </button>
-              ))}
-            </>
-          ) : null}
+                <div className="nav-group" id={`nav-${group.id}`} hidden={!groups[group.id]}>
+                  {items.map((item) => (
+                    <button
+                      type="button"
+                      key={item.view}
+                      aria-current={view === item.view ? 'page' : undefined}
+                      onPointerEnter={() => warm(item.view)}
+                      onPointerDown={() => warm(item.view)}
+                      onFocus={() => warm(item.view)}
+                      onClick={() => go(item.view)}
+                    >
+                      <span className="ico">{item.icon}</span>
+                      {TITLES[item.view]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </nav>
         <div className="side-foot">
           <div className="who">
@@ -285,6 +531,14 @@ function Shell({ staff }: { staff: Staff }) {
           </div>
         </header>
         <main className="view">
+          {newVersion ? (
+            <div className="note note-warn new-version" role="alert">
+              <span>Hay una versión nueva del panel. Recárgalo para seguir sin errores.</span>
+              <button className="btn btn-primary btn-sm" type="button" onClick={() => location.reload()}>
+                Recargar el panel
+              </button>
+            </div>
+          ) : null}
           {view === 'resumen' ? (
             <Resumen
               summary={summary}
@@ -295,32 +549,41 @@ function Shell({ staff }: { staff: Staff }) {
             />
           ) : view === 'pedidos' ? (
             <Pedidos
+              isAdmin={isAdmin}
               orders={orders}
               fresh={fresh}
               now={now}
               restaurant={staff.restaurant}
+              {...(business.phone ? { restaurantPhone: business.phone } : {})}
+              {...(business.address ? { restaurantAddress: business.address } : {})}
               onChanged={() => void reload()}
             />
-          ) : view === 'ventas' && can('ventas') ? (
-            <Ventas restaurant={staff.restaurant} />
-          ) : view === 'inventario' && can('inventario') ? (
-            <Inventario restaurantId={staff.restaurant_id} />
-          ) : view === 'whatsapp' && can('whatsapp') ? (
-            <WhatsApp restaurantId={staff.restaurant_id} restaurant={staff.restaurant} />
-          ) : view === 'carta' && can('carta') ? (
-            <Carta restaurantId={staff.restaurant_id} />
-          ) : view === 'sitio' && can('sitio') ? (
-            <EditarPagina restaurantId={staff.restaurant_id} />
-          ) : view === 'promos' && can('promos') ? (
-            <Promociones restaurantId={staff.restaurant_id} />
-          ) : view === 'eventos' && can('eventos') ? (
-            <Eventos restaurantId={staff.restaurant_id} />
-          ) : view === 'equipo' && can('equipo') ? (
-            <Equipo />
-          ) : null}
+          ) : (
+            (Object.keys(VIEWS) as Array<keyof typeof VIEWS>).map((key) => {
+              if (key === 'cuenta' || view !== key || !can(key)) return null;
+              const id = staff.restaurant_id;
+              return (
+                <ViewBoundary key={key} def={VIEWS[key]} fallback={<p className="muted center">Cargando…</p>}>
+                  {(View) =>
+                    key === 'ventas' || key === 'whatsapp' ? (
+                      <View restaurant={staff.restaurant} restaurantId={id} />
+                    ) : key === 'equipo' || key === 'clientes' || key === 'seguridad' ? (
+                      <View />
+                    ) : (
+                      <View restaurantId={id} />
+                    )
+                  }
+                </ViewBoundary>
+              );
+            })
+          )}
         </main>
       </div>
-      {account ? <MiCuenta onClose={() => setAccount(false)} /> : null}
+      {account ? (
+        <ViewBoundary def={VIEWS.cuenta} fallback={null}>
+          {(View) => <View onClose={() => setAccount(false)} />}
+        </ViewBoundary>
+      ) : null}
       {manual ? (
         <ManualOrder
           restaurantId={staff.restaurant_id}
