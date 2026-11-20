@@ -1,5 +1,5 @@
 // Clientes (D41, D65): lista paginada por RPC (solo admin), edición de etiquetas y notas y exportación de promociones.
-import type { PromoCustomer } from '../core/security';
+import { readPromoExport, type PromoCustomer } from '../core/security';
 import { getSupabase } from '../lib/supabase';
 
 export interface CustomerRow {
@@ -13,6 +13,8 @@ export interface CustomerRow {
   orders: number;
   spent: number;
   last_order: string | null;
+  /** Autorización de promociones vigente (último registro en consents). */
+  promos: boolean;
 }
 export interface CustomerPage {
   total: number;
@@ -38,6 +40,18 @@ export async function updateCustomer(
   if (error) throw new Error('No se pudo guardar el cambio.');
 }
 
+/** D65: retira la autorización de promociones (solo admin; queda en consents y en auditoría). */
+export async function revokePromos(customerId: string): Promise<void> {
+  const { error } = await getSupabase().rpc('revoke_promos', { p_customer: customerId });
+  if (error) {
+    throw new Error(
+      error.code === '42501'
+        ? 'Solo la administración puede retirar la autorización.'
+        : 'No se pudo retirar la autorización.',
+    );
+  }
+}
+
 /** D65: clientes con autorización vigente de promociones. Solo admin; la base deja la exportación en auditoría. */
 export async function exportPromoCustomers(): Promise<PromoCustomer[]> {
   const { data, error } = await getSupabase().rpc('customers_promo_export');
@@ -46,5 +60,5 @@ export async function exportPromoCustomers(): Promise<PromoCustomer[]> {
       error.code === '42501' ? 'Solo la administración puede exportar clientes.' : 'No se pudo exportar.',
     );
   }
-  return (data ?? []) as PromoCustomer[];
+  return readPromoExport(data);
 }

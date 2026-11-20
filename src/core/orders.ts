@@ -339,32 +339,48 @@ export function deferredConflicts(
   return [...deferred].filter(([id, entry]) => byId.get(id) !== entry.from).map(([id]) => id);
 }
 
-/* Cancelados de hoy (D60): por la hora del evento de anulación, no por la del pedido. */
+/* Cancelados de hoy (D60): los trae la RPC `cancelled_today` por la hora del evento de anulación (sin la
+   ventana de 36 h del tablero). */
 
-export interface CancellableOrder {
+export interface CancelledToday {
   id: string;
-  status: OrderStatus;
-  is_test?: boolean | null;
-  order_events: ReadonlyArray<{ status: OrderStatus; at: string; by_user?: string | null }>;
+  code: string;
+  total: number;
+  customerName: string;
+  reason: string | null;
+  publicMessage: string | null;
+  voidedFrom: OrderStatus | null;
+  suppliesRestored: boolean | null;
+  at: string;
+  by: string;
 }
 
 /**
- * Pedidos anulados o cancelados hoy en Bogotá, el más reciente primero, con la hora y quién lo hizo.
- * Los de prueba no cuentan como cancelados (D42).
+ * Lee la respuesta de `cancelled_today`: el más reciente primero. Los de prueba no cuentan como cancelados
+ * (D42). Descarta filas sin id, código u hora.
  */
-export function cancelledToday<T extends CancellableOrder>(
-  orders: T[],
-  now: number,
-): Array<{ order: T; at: string; byUser: string | null }> {
-  const today = startOfBogotaDay(now);
-  const out: Array<{ order: T; at: string; byUser: string | null }> = [];
-  for (const order of orders) {
-    if (order.status !== 'cancelado' || order.is_test) continue;
-    const event = [...order.order_events]
-      .filter((item) => item.status === 'cancelado')
-      .sort((first, second) => second.at.localeCompare(first.at))[0];
-    if (!event || new Date(event.at).getTime() < today) continue;
-    out.push({ order, at: event.at, byUser: event.by_user ?? null });
+export function readCancelledToday(raw: unknown): CancelledToday[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CancelledToday[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    if (row.is_test === true) continue;
+    if (typeof row.id !== 'string' || typeof row.code !== 'string' || typeof row.at !== 'string') continue;
+    const text = (key: string) => (typeof row[key] === 'string' ? (row[key] as string) : null);
+    const from = text('voided_from');
+    out.push({
+      id: row.id,
+      code: row.code,
+      total: typeof row.total === 'number' ? row.total : 0,
+      customerName: text('customer_name') ?? '',
+      reason: text('cancel_reason'),
+      publicMessage: text('cancel_public'),
+      voidedFrom: from && from in STATUS_LABEL ? (from as OrderStatus) : null,
+      suppliesRestored: typeof row.supplies_restored === 'boolean' ? row.supplies_restored : null,
+      at: row.at,
+      by: text('by') ?? '—',
+    });
   }
   return out.sort((first, second) => second.at.localeCompare(first.at));
 }

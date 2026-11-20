@@ -1,6 +1,6 @@
 # HANDOFF · JP Smoke
 
-> **Última actualización:** 2026-11-20 (v0.19: D56–D67, oleada 4) · **Roadmap:** v0.19 · **Git:** rama `oleada4-v019`; producción en v0.18 (`7b3eeee`) hasta publicar v0.19
+> **Última actualización:** 2026-11-20 (v0.19: D56–D67, oleada 4) · **Roadmap:** v0.19 · **Git:** v0.19 (`df06149`) en `main` y `produccion` (PR #7); **publicada 2026-11-20**
 >
 > **Para retomar en otro chat** (copiar tal cual):
 >
@@ -42,7 +42,11 @@ Micro app de pedidos para restaurantes, empezando por **JP Smoke** (hamburguesas
 | Auditoría 2026-11-02 | Skill `security-audit` de Cloudflare, 6 fases, 51 agentes: 4 hallazgos confirmados en local y corregidos, 2 mitigados, 1 rechazado (`docs/seguridad/auditoria-2026-11-02.md`, D35) |
 | **Montaje en producción** | **Siguiente, cuando Gustavo apruebe** (`docs/montaje.md`) |
 
-## 2a. Bloque v0.19 (oleada 4, 2026-11-20)
+## 2a. Bloque v0.19 (oleada 4, 2026-11-20) — publicado
+
+**v0.19.1 (correcciones de la revisión final de Fable):** migración `20261120130000_correcciones_v0191.sql` (`revoke_promos`, `customers_promo_export` como un jsonb, `customers_list.promos`, `cancelled_today`, resumen de plataformas sin casadas anuladas); sitio: exprés solo registra promociones con casilla visible y un segundo pedido vuelve a pedir autorizaciones; Clientes con "Retirar autorización". `verify.sh release` en verde (286 unitarias, 360 pgTAP, 244 e2e).
+
+**Despliegue 2026-11-20 (aprobado por Gustavo):** 4 migraciones aplicadas (21 en remoto; anon solo `ordering_status`, `stock_status`, `track_order`; RLS y `search_path` completos), 7 Edge Functions desplegadas, `main` y `produccion` en `df06149` (`/version.json` = `df061490563e`). Humo en producción OK (escritorio 1,3 s, WebKit 1,0 s, panel 0,5–1,1 s, sin errores salvo el `<select>` conocido).
 
 Plan en `docs/plan-v0.19.md` (Fable 5.2). Decisiones D56–D67.
 - **Base (4 migraciones `20261120120000…120300`)**: idempotencia por `request_id` (D58); `set_order_status` con motivo público, cupón devuelto y devolver insumos opcional desde En el barril (D59); pausa (`pause_orders`, `ordering_status` para anon) y hora estimada dinámica (D61); `capture_lead` rechaza bienvenida vencida (D62); `fill_ms`/`checkout_ms` (D63); `external_sales` + `import_batches` + RPC de importación con comisión (D64); `blocked_attempts.customer_id` y `customers_promo_export` con auditoría (D65); `events.lead_copy`, `reviews.source/review_date/position` (D56, D57). pgTAP `19_v019.sql`; `cancel_reason` hasta 200.

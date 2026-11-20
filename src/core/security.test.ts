@@ -9,6 +9,7 @@ import {
   nextAuditCursor,
   promoExportFileName,
   promoExportRows,
+  readPromoExport,
   reasonLabel,
 } from './security';
 
@@ -75,8 +76,15 @@ describe('exportar clientes con promociones (D65)', () => {
         celular: '3001234567',
         autorizado_el: '2026-11-19T15:00:00Z',
         pedidos: 3,
+        ultimo_pedido: null,
       },
-      { nombre: '=HYPERLINK("x")', celular: '3109876543', autorizado_el: null, pedidos: null },
+      {
+        nombre: '=HYPERLINK("x")',
+        celular: '3109876543',
+        autorizado_el: null,
+        pedidos: null,
+        ultimo_pedido: null,
+      },
     ]);
     expect(rows[0]).toEqual({
       Nombre: 'Ana, la de "arriba"',
@@ -89,6 +97,31 @@ describe('exportar clientes con promociones (D65)', () => {
     expect(csv[0]).toBe('Nombre,Celular,Autorizó promociones,Pedidos');
     expect(csv[1]).toBe('"Ana, la de ""arriba""",3001234567,2026-11-19 10:00,3');
     expect(csv[2]?.startsWith('"\'=HYPERLINK')).toBe(true);
+  });
+  it('lee la exportación como un único jsonb y descarta lo inválido', () => {
+    expect(readPromoExport(null)).toEqual([]);
+    expect(readPromoExport({ nombre: 'x' })).toEqual([]);
+    expect(
+      readPromoExport([
+        {
+          nombre: 'Ana',
+          celular: '3001234567',
+          autorizado_el: '2026-11-19T15:00:00Z',
+          pedidos: 2,
+          ultimo_pedido: '2026-11-19T16:00:00Z',
+        },
+        { nombre: 'Sin celular' },
+        'basura',
+      ]),
+    ).toEqual([
+      {
+        nombre: 'Ana',
+        celular: '3001234567',
+        autorizado_el: '2026-11-19T15:00:00Z',
+        pedidos: 2,
+        ultimo_pedido: '2026-11-19T16:00:00Z',
+      },
+    ]);
   });
   it('nombre del archivo con el día de Bogotá', () => {
     expect(promoExportFileName(new Date('2026-11-20T02:00:00Z'))).toBe('clientes-promociones-2026-11-19.csv');

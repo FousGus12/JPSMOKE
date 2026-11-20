@@ -29,6 +29,7 @@ test.afterAll(() => {
   sql(`update public.products set available = true where restaurant_id = '${RID}' and slug = 'tocinazo'`);
   for (const query of [
     `delete from public.supply_moves where order_id in (select id from public.orders where customer_name = '${NAME}')`,
+    `delete from public.consents where phone in (select phone from public.orders where customer_name = '${NAME}')`,
     `delete from public.orders where customer_name = '${NAME}'`,
     `delete from public.customers where name = '${NAME}'`,
     "update public.coupons c set uses = (select count(*) from public.orders o where o.restaurant_id = c.restaurant_id and o.coupon_code = c.code::text and o.status <> 'cancelado')",
@@ -201,7 +202,9 @@ test.describe('bienvenida con fechas (D62)', () => {
   });
 });
 
-test('pedido exprés: con datos recordados abre en Confirmar y guarda tiempos (D63)', async ({ page }) => {
+test('pedido exprés: con datos recordados abre en Confirmar, guarda tiempos y no registra promociones sin casilla (D63, D65)', async ({
+  page,
+}) => {
   const cel = phone();
   const zone = activeZone();
   await page.addInitScript(
@@ -219,7 +222,7 @@ test('pedido exprés: con datos recordados abre en Confirmar y guarda tiempos (D
           pay: 'nequi',
           cash: '',
           ok: false,
-          promos: false,
+          promos: true, // recordado de otra visita: no cuenta sin que el cliente vea la casilla
         }),
       );
     },
@@ -235,7 +238,10 @@ test('pedido exprés: con datos recordados abre en Confirmar y guarda tiempos (D
   // La autorización se pide en cada pedido: sin marcarla no envía.
   await checkout.getByRole('button', { name: /Confirmar pedido/ }).click();
   await expect(checkout.locator('.done')).toHaveCount(0);
-  await checkout.getByRole('checkbox').check();
+  const datos = checkout.getByRole('checkbox', { name: /Autorizo a/ });
+  const promos = checkout.getByRole('checkbox', { name: /Quiero recibir promociones/ });
+  await expect(promos).not.toBeChecked(); // casilla opcional en Confirmar, desmarcada aunque se recuerde
+  await datos.check();
   await checkout.getByRole('button', { name: /Confirmar pedido/ }).click();
   await expect(checkout.locator('.done .code')).toHaveText(/^JP-\d{4}$/);
   // Exprés: no pasó por Datos (fill_ms vacío) y midió de abrir el pedido a confirmar.
@@ -244,11 +250,26 @@ test('pedido exprés: con datos recordados abre en Confirmar y guarda tiempos (D
   ).split('|');
   expect(fill).toBe('null');
   expect(Number(total)).toBeGreaterThan(0);
+  const promoConsents = () =>
+    sql(`select count(*) from public.consents where phone = '${cel}' and kind = 'promociones'`);
+  expect(promoConsents()).toBe('0');
 
   // El pedido queda guardado para repetirlo: el carrito vacío lo ofrece.
   await checkout.locator('[data-close-modal]').last().click();
   await openCartJs(page);
-  await expect(
-    page.getByRole('dialog', { name: 'Mi pedido' }).getByRole('button', { name: /Repetir mi último pedido/ }),
-  ).toBeVisible();
+  const cart = page.getByRole('dialog', { name: 'Mi pedido' });
+  await expect(cart.getByRole('button', { name: /Repetir mi último pedido/ })).toBeVisible();
+
+  // Segundo pedido en la misma visita: vuelve a pedir la autorización; marcar promociones sí la registra.
+  await cart.getByRole('button', { name: /Repetir mi último pedido/ }).click();
+  await cart.getByRole('button', { name: 'Continuar con el pedido' }).click();
+  await expect(checkout.getByRole('heading', { name: 'Confirma tu pedido' })).toBeVisible();
+  await expect(datos).not.toBeChecked();
+  await expect(promos).not.toBeChecked();
+  await datos.check();
+  await promos.check();
+  await checkout.getByRole('button', { name: /Confirmar pedido/ }).click();
+  await expect(checkout.locator('.done .code')).toHaveText(/^JP-\d{4}$/);
+  expect(sql(`select count(*) from public.orders where phone = '${cel}'`)).toBe('2');
+  expect(promoConsents()).toBe('1');
 });

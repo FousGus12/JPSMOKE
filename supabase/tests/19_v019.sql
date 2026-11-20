@@ -2,7 +2,7 @@
 -- dinámica (D61), bienvenida vencida (D62), tiempos (D63), importar CSV (D64), frenados y exportación (D65).
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(91);
+select plan(94);
 
 insert into public.restaurants (id, slug, name, order_prefix) values
   ('1c000000-0000-4000-8000-000000000001', 'v19-a', 'V19 A', 'VY'),
@@ -255,13 +255,24 @@ set local role authenticated;
 select pg_temp.como('2c000000-0000-4000-8000-00000000000c');
 select throws_ok($$ select * from public.customers_promo_export() $$, '42501', null, 'el operador no exporta clientes');
 select pg_temp.como('2c000000-0000-4000-8000-00000000000a');
-select is((select array_agg(celular order by celular) from public.customers_promo_export()), array['3190000001'],
+select is((select array_agg(x ->> 'celular' order by x ->> 'celular') from jsonb_array_elements(public.customers_promo_export()) x), array['3190000001'],
   'exporta solo autorización vigente y no bloqueados');
 reset role;
 select set_config('request.jwt.claims', '', true);
 select is((select (detail ->> 'filas')::int from public.audit_log where restaurant_id = '1c000000-0000-4000-8000-000000000001'
   and action = 'exportar' and entity = 'clientes'), 1, 'la exportación queda en auditoría con el número de filas');
 select ok(not has_function_privilege('anon', 'public.customers_promo_export()', 'execute'), 'anon no exporta');
+-- v0.19.1: retirar la autorización (solo admin) saca al cliente de la exportación.
+set local role authenticated;
+select pg_temp.como('2c000000-0000-4000-8000-00000000000c');
+select throws_ok($$ select public.revoke_promos((select id from public.customers where phone = '3190000001'
+  and restaurant_id = '1c000000-0000-4000-8000-000000000001')) $$, '42501', null, 'el operador no retira autorizaciones');
+select pg_temp.como('2c000000-0000-4000-8000-00000000000a');
+select lives_ok($$ select public.revoke_promos((select id from public.customers where phone = '3190000001'
+  and restaurant_id = '1c000000-0000-4000-8000-000000000001')) $$, 'el admin retira la autorización');
+select is(jsonb_array_length(public.customers_promo_export()), 0, 'tras el retiro ya no sale en la exportación');
+reset role;
+select set_config('request.jwt.claims', '', true);
 
 -- ---------------------------------------------------------------------------
 -- D64: importar ventas de Rappi/DiDi.

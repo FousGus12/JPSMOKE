@@ -71,6 +71,27 @@ export interface PromoCustomer {
   celular: string;
   autorizado_el: string | null;
   pedidos: number | null;
+  ultimo_pedido: string | null;
+}
+
+/** La exportación llega como un único jsonb (array); descarta lo que no tenga nombre y celular. */
+export function readPromoExport(raw: unknown): PromoCustomer[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PromoCustomer[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const value = item as Record<string, unknown>;
+    if (typeof value.nombre !== 'string' || typeof value.celular !== 'string') continue;
+    const text = (key: string) => (typeof value[key] === 'string' ? (value[key] as string) : null);
+    out.push({
+      nombre: value.nombre,
+      celular: value.celular,
+      autorizado_el: text('autorizado_el'),
+      pedidos: typeof value.pedidos === 'number' ? value.pedidos : null,
+      ultimo_pedido: text('ultimo_pedido'),
+    });
+  }
+  return out;
 }
 
 const bogotaParts = new Intl.DateTimeFormat('en-CA', {

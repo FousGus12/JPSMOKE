@@ -28,7 +28,6 @@ import {
   VOID_REASONS,
   asksRestore,
   cancelWhatsApp,
-  cancelledToday,
   customerWhatsApp,
   deferredConflicts,
   publicCancelText,
@@ -45,13 +44,14 @@ import {
   voidReasonText,
   type OrderStatus,
   type PendingMove,
+  type CancelledToday,
   type PublicCancelChoice,
   type StaffRole,
   type VoidReason,
 } from '../core/orders';
 import {
   loadMyRole,
-  loadStaffNames,
+  loadCancelledToday,
   sessionToken,
   setStatus,
   setStatusKeepalive,
@@ -189,7 +189,9 @@ export function Pedidos({
   const [undo, setUndo] = useState<ReadonlyMap<string, number>>(() => new Map());
   const [clock, setClock] = useState(() => Date.now());
   const [showCancelled, setShowCancelled] = useState(false);
-  const [staffNames, setStaffNames] = useState<Map<string, string> | null>(null);
+  const [cancelledList, setCancelledList] = useState<CancelledToday[]>([]);
+  /** Sube al anular o cancelar desde este panel para recargar Cancelados de hoy. */
+  const [cancelledBump, setCancelledBump] = useState(0);
   const deferred = useRef(new Map<string, Deferred>());
   /** Enviados con keepalive: si la página vuelve del historial (bfcache) se recarga el tablero. */
   const flushed = useRef(new Set<string>());
@@ -235,17 +237,28 @@ export function Pedidos({
     latest.current = { orders, moves, liveBoard, onChanged };
   }, [orders, moves, liveBoard, onChanged]);
 
-  const cancelledList = useMemo(() => cancelledToday(orders, now), [orders, now]);
+  // D60: la RPC trae los de hoy aunque el pedido sea de hace más de 36 h. Se recarga al montar, al anular
+  // o cancelar aquí y cuando cambia el conjunto de cancelados del tablero (otro dispositivo, en vivo).
+  const cancelledKey = useMemo(
+    () =>
+      orders
+        .filter((order) => order.status === 'cancelado')
+        .map((order) => order.id)
+        .sort()
+        .join(','),
+    [orders],
+  );
   useEffect(() => {
-    if (!showCancelled || staffNames) return;
     let alive = true;
-    void loadStaffNames().then((names) => {
-      if (alive) setStaffNames(names);
-    });
+    void loadCancelledToday()
+      .then((list) => {
+        if (alive) setCancelledList(list);
+      })
+      .catch(() => undefined); // se conserva la última lista
     return () => {
       alive = false;
     };
-  }, [showCancelled, staffNames]);
+  }, [cancelledKey, cancelledBump]);
 
   // Con el arrastre activo el dedo no desplaza el tablero. Listener nativo no pasivo desde el montaje:
   // React registra touchmove como pasivo y touch-action no cambia a mitad del gesto.
@@ -786,30 +799,30 @@ export function Pedidos({
           </button>
           {showCancelled ? (
             <ul className="cancelled-list" id="cancelados-hoy">
-              {cancelledList.map(({ order, at, byUser }) => (
-                <li key={order.id} data-testid={`cancelado-${order.code}`}>
+              {cancelledList.map((item) => (
+                <li key={item.id} data-testid={`cancelado-${item.code}`}>
                   <div className="cancelled-head">
-                    <b>{order.code}</b>
-                    <span>{time(at)}</span>
-                    <span className="cancelled-total">{money(order.total)}</span>
+                    <b>{item.code}</b>
+                    <span>{time(item.at)}</span>
+                    <span className="cancelled-total">{money(item.total)}</span>
                   </div>
                   <dl className="cancelled-kv">
                     <dt>Estaba en</dt>
-                    <dd>{order.voided_from ? STATUS_LABEL[order.voided_from] : '—'}</dd>
+                    <dd>{item.voidedFrom ? STATUS_LABEL[item.voidedFrom] : '—'}</dd>
                     <dt>Motivo</dt>
-                    <dd>{order.cancel_reason ?? '—'}</dd>
+                    <dd>{item.reason ?? '—'}</dd>
                     <dt>Al cliente</dt>
-                    <dd>{order.cancel_public ?? 'Sin mensaje'}</dd>
+                    <dd>{item.publicMessage ?? 'Sin mensaje'}</dd>
                     <dt>Insumos</dt>
                     <dd>
-                      {order.supplies_restored === false
+                      {item.suppliesRestored === false
                         ? 'No volvieron (ya se usaron)'
-                        : order.supplies_restored
+                        : item.suppliesRestored
                           ? 'Volvieron al inventario'
                           : '—'}
                     </dd>
                     <dt>Quién</dt>
-                    <dd>{(byUser && staffNames?.get(byUser)) || '—'}</dd>
+                    <dd>{item.by}</dd>
                   </dl>
                 </li>
               ))}
@@ -827,6 +840,7 @@ export function Pedidos({
             setVoidId(null);
             setOpenId(null);
             if (result) setCancelResult(result);
+            setCancelledBump((value) => value + 1);
             onChanged();
           }}
         />
@@ -849,6 +863,7 @@ export function Pedidos({
           onCancelled={(result) => {
             setOpenId(null);
             if (result) setCancelResult(result);
+            setCancelledBump((value) => value + 1);
           }}
           onChanged={onChanged}
         />

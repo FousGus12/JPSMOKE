@@ -459,6 +459,7 @@ Unitarias (`src/core`: precios, cupones, horario, cobertura), pgTAP por rol (ano
 ## 15. Registro de cambios
 
 - 2026-11-15 · v0.17 · Animaciones en celular y fluidez del inicio; adiciones ligadas a un plato (D40).
+- 2026-11-20 · v0.19.1 · Correcciones de la revisión final: retirar autorización de promociones (D65), exportación sin tope de filas, pedido exprés sin registrar promociones sin casilla visible, Cancelados de hoy por RPC, ventas importadas casadas con pedidos anulados vuelven a sumar.
 - 2026-11-19 · v0.19 · Inicio editable y Reseñas (D56, D57); idempotencia (D58); anulación con cupón, motivo público e insumos (D59); deshacer y cancelados de hoy (D60); pausa y hora dinámica (D61); bienvenida con caducidad (D62); repetir y pedido exprés (D63); importar CSV (D64); frenados y exportación (D65); comanda y lista de compras (D66); técnicos (D67).
 - 2026-11-19 · v0.18 · Pedido de Gustavo: menú con grupos y Administración completa (D41), anular hasta el final (D42), pedidos frenados con detalle (D43), cobertura verificable con mapa (D44), Rappi/DiDi (D45), inventario Inicial + alerta (D46), adiciones solo con plato (D47), WhatsApp real abierta (D48), costo de insumos y margen por receta (D49), inicio en celular de una pantalla (D50), carga más rápida (D51), seguimiento animado (D52), tablero arrastrable (D53), recibo (D54); ajustes de la revisión (D55); arreglo de animaciones y barra inferior en celular.
 - 2026-11-15 · v0.17 · Adiciones ligadas a un plato (D40); animaciones en celular.

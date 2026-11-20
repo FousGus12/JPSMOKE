@@ -66,6 +66,19 @@ export function canExpress(form: CustomerForm | null | undefined, ctx: CheckoutC
   return Object.keys(validateCustomer(form, ctx)).length === 0;
 }
 
+/**
+ * Autorización de promociones que se envía (D65): solo cuenta una casilla que el cliente vio en este intento.
+ * Si pasó por Datos, la de Datos; si llegó por exprés, la casilla opcional de Confirmar (sale desmarcada).
+ * Lo recordado de otra visita nunca se envía solo.
+ */
+export function promosToSend(input: {
+  viaData: boolean;
+  dataPromos: boolean;
+  confirmPromos: boolean;
+}): boolean {
+  return input.viaData ? input.dataPromos : input.confirmPromos;
+}
+
 /** Lee los datos guardados (formato viejo o dañado = vacíos donde falte). */
 export function readSavedForm(raw: unknown): CustomerForm {
   const value = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};

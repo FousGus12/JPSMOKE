@@ -663,6 +663,9 @@ isOneToOne: false
 "can_of":
 { Args: { "area": string,"rid": string }; Returns: boolean
                            },
+"cancelled_today":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
 "capture_lead":
 { Args: { "p_consent_version": string,"p_event": string,"p_name": string,"p_phone": string,"p_restaurant": string }; Returns: Json
                            },
@@ -679,9 +682,7 @@ isOneToOne: false
 { Args: { "p_limit"?: number,"p_offset"?: number,"p_search"?: string }; Returns: Json
                            },
 "customers_promo_export":
-{ Args: Record<PropertyKey, never>; Returns: {
-              "autorizado_el": string,"celular": string,"nombre": string,"pedidos": number,"ultimo_pedido": string
-            }[]
+{ Args: Record<PropertyKey, never>; Returns: Json
                            },
 "external_sales_summary":
 { Args: { "p_days"?: number }; Returns: Json
@@ -730,6 +731,9 @@ isOneToOne: false
                            },
 "revert_import":
 { Args: { "p_batch": string }; Returns: number
+                           },
+"revoke_promos":
+{ Args: { "p_customer": string }; Returns: undefined
                            },
 "revoke_sessions":
 { Args: { "p_user": string }; Returns: undefined

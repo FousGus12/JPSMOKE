@@ -1,7 +1,14 @@
 // Datos del panel de pedidos (F5). Todo pasa por RLS y por funciones que validan el rol en la base.
 import { readPublicEnv } from '../lib/env';
 import { getSupabase } from '../lib/supabase';
-import { statusErrorText, type OrderChannel, type OrderStatus, type StaffRole } from '../core/orders';
+import {
+  readCancelledToday,
+  statusErrorText,
+  type CancelledToday,
+  type OrderChannel,
+  type OrderStatus,
+  type StaffRole,
+} from '../core/orders';
 
 export interface PanelOrder {
   id: string;
@@ -113,13 +120,11 @@ export function setStatusKeepalive(orderId: string, status: OrderStatus, token: 
   }
 }
 
-/** Nombres del equipo por usuario (RLS: solo el propio restaurante), para "quién" en Cancelados de hoy. */
-export async function loadStaffNames(): Promise<Map<string, string>> {
-  const { data, error } = await getSupabase().from('staff').select('user_id, full_name');
-  if (error || !data) return new Map();
-  return new Map(
-    (data as Array<{ user_id: string; full_name: string }>).map((row) => [row.user_id, row.full_name]),
-  );
+/** Cancelados de hoy (D60) por la RPC: todo el equipo, sin la ventana de 36 h del tablero. */
+export async function loadCancelledToday(): Promise<CancelledToday[]> {
+  const { data, error } = await getSupabase().rpc('cancelled_today');
+  if (error) throw new Error('No se pudieron cargar los cancelados de hoy.');
+  return readCancelledToday(data);
 }
 
 /** Rol de quien usa el panel (solo para mostrar botones; la base valida con is_admin_of). */

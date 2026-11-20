@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  readCancelledToday,
   applyMoves,
   asksRestore,
   cancelWhatsApp,
-  cancelledToday,
   deferredConflicts,
   publicCancelText,
   restoreFlag,
@@ -277,39 +277,35 @@ describe('deshacer entregado (D60)', () => {
 });
 
 describe('cancelados de hoy (D60)', () => {
-  const ev = (status: OrderStatus, at: string, by_user: string | null = null) => ({ status, at, by_user });
-  it('usa la hora de la anulación en Bogotá, excluye prueba y ordena del más reciente', () => {
-    const orders = [
-      // Creado ayer, anulado hoy a las 9 a. m.: cuenta.
+  it('lee la RPC, excluye prueba y ordena del más reciente', () => {
+    const list = readCancelledToday([
       {
-        id: 'ayer',
-        status: 'cancelado' as OrderStatus,
+        id: 'a',
+        code: 'JP-0001',
+        total: 30000,
+        customer_name: 'Ana',
+        cancel_reason: 'Cliente canceló',
+        cancel_public: null,
+        voided_from: 'en_cocina',
+        supplies_restored: false,
         is_test: false,
-        order_events: [ev('nuevo', '2026-10-31T22:00:00Z'), ev('cancelado', '2026-11-01T14:00:00Z', 'u1')],
+        at: '2026-11-01T14:00:00Z',
+        by: 'Admin',
       },
-      // Anulado anoche a las 11 p. m. de Bogotá (04:00Z de hoy): no cuenta.
-      {
-        id: 'anoche',
-        status: 'cancelado' as OrderStatus,
-        order_events: [ev('cancelado', '2026-11-01T04:00:00Z')],
-      },
-      {
-        id: 'prueba',
-        status: 'cancelado' as OrderStatus,
-        is_test: true,
-        order_events: [ev('cancelado', '2026-11-01T15:00:00Z')],
-      },
-      {
-        id: 'tarde',
-        status: 'cancelado' as OrderStatus,
-        order_events: [ev('cancelado', '2026-11-01T19:00:00Z')],
-      },
-      { id: 'vivo', status: 'nuevo' as OrderStatus, order_events: [ev('nuevo', '2026-11-01T19:00:00Z')] },
-      { id: 'sin-evento', status: 'cancelado' as OrderStatus, order_events: [] },
-    ];
-    const list = cancelledToday(orders, NOW);
-    expect(list.map((row) => row.order.id)).toEqual(['tarde', 'ayer']);
-    expect(list[1]).toMatchObject({ at: '2026-11-01T14:00:00Z', byUser: 'u1' });
-    expect(list[0]?.byUser).toBeNull();
+      { id: 'p', code: 'JP-0002', is_test: true, at: '2026-11-01T15:00:00Z' },
+      { id: 'b', code: 'JP-0003', at: '2026-11-01T19:00:00Z', voided_from: 'raro' },
+      { id: 'sin-hora', code: 'JP-0004' },
+      'basura',
+    ]);
+    expect(list.map((row) => row.id)).toEqual(['b', 'a']);
+    expect(list[1]).toMatchObject({
+      code: 'JP-0001',
+      reason: 'Cliente canceló',
+      voidedFrom: 'en_cocina',
+      suppliesRestored: false,
+      by: 'Admin',
+    });
+    expect(list[0]).toMatchObject({ total: 0, voidedFrom: null, suppliesRestored: null, by: '—' });
+    expect(readCancelledToday(null)).toEqual([]);
   });
 });

@@ -11,7 +11,8 @@ const SUELTO = '3570000002'; // frenado sin cliente (el celular no existía)
 const PROMO = '3570000003'; // autorizó promociones
 const RETIRADA = '3570000004'; // autorizó y luego retiró
 const PROMO_BLOQ = '3570000005'; // autorizó, pero está bloqueado
-const PHONES = [LIGADA, SUELTO, PROMO, RETIRADA, PROMO_BLOQ];
+const RETIRO_PANEL = '3570000006'; // autorizó y la administración la retira desde Clientes
+const PHONES = [LIGADA, SUELTO, PROMO, RETIRADA, PROMO_BLOQ, RETIRO_PANEL];
 const NAMES = ['Frenada Ligada', 'Frenado Suelto'];
 const exportsCount = () =>
   Number(
@@ -26,6 +27,7 @@ test.beforeAll(() => {
     [PROMO, 'Promo Autorizada', false],
     [RETIRADA, 'Promo Retirada', false],
     [PROMO_BLOQ, 'Promo Bloqueada', true],
+    [RETIRO_PANEL, 'Promo Por Retirar', false],
   ];
   for (const [phone, name, blocked] of customers)
     sql(
@@ -44,6 +46,7 @@ test.beforeAll(() => {
   consent(RETIRADA, true, '3 days');
   consent(RETIRADA, false, '1 day');
   consent(PROMO_BLOQ, true, '2 days');
+  consent(RETIRO_PANEL, true, '2 days');
 });
 test.afterAll(() => {
   const list = `('${PHONES.join("', '")}')`;
@@ -96,10 +99,34 @@ test('seguridad: frenado ligado con Desbloquear y WhatsApp; sin vínculo, sin ac
   ).toBe('f');
 });
 
-test('clientes: exportar con autorización de promociones deja CSV y auditoría (D65)', async ({ page }) => {
+test('clientes: retirar la autorización y exportar deja CSV y auditoría (D65)', async ({ page }) => {
   await loginAdmin(page);
   await goTo(page, 'Clientes');
   await expect(page.getByRole('heading', { name: 'Clientes', level: 1 })).toBeVisible();
+
+  // Retirar la autorización: confirmación, la etiqueta se va y queda en auditoría.
+  const search = page.getByLabel('Buscar por nombre o celular');
+  await search.fill(RETIRO_PANEL);
+  const row = page.getByTestId(`cliente-${RETIRO_PANEL}`);
+  await expect(row.getByText('Acepta promociones')).toBeVisible();
+  page.once('dialog', (dialog) => void dialog.dismiss());
+  await row.getByRole('button', { name: 'Retirar autorización' }).click();
+  await expect(row.getByText('Acepta promociones')).toBeVisible(); // cancelar no cambia nada
+  page.once('dialog', (dialog) => {
+    expect(dialog.message()).toContain('Promo Por Retirar');
+    void dialog.accept();
+  });
+  await row.getByRole('button', { name: 'Retirar autorización' }).click();
+  await expect(row.getByText('Acepta promociones')).toHaveCount(0);
+  await expect(row.getByRole('button', { name: 'Retirar autorización' })).toHaveCount(0);
+  expect(
+    sql(
+      `select count(*) from public.audit_log where restaurant_id = '${RID}' and action = 'retirar promociones' and entity_id = (select id::text from public.customers where restaurant_id = '${RID}' and phone = '${RETIRO_PANEL}')`,
+    ),
+  ).toBe('1');
+  await search.fill(PROMO);
+  await expect(page.getByTestId(`cliente-${PROMO}`).getByText('Acepta promociones')).toBeVisible();
+  await search.fill('');
   const before = exportsCount();
 
   const open = page.getByRole('button', { name: 'Exportar clientes con autorización de promociones' });
@@ -124,6 +151,7 @@ test('clientes: exportar con autorización de promociones deja CSV y auditoría 
   expect(header).toBe('Nombre,Celular,Autorizó promociones,Pedidos');
   expect(lines.some((line) => line.startsWith(`Promo Autorizada,${PROMO},`))).toBe(true);
   expect(csv).not.toContain(RETIRADA); // retiró la autorización
+  expect(csv).not.toContain(RETIRO_PANEL); // retirada desde el panel
   expect(csv).not.toContain(PROMO_BLOQ); // bloqueado
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText(/CSV descargado: \d+ client/)).toBeVisible();

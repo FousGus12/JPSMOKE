@@ -25,6 +25,7 @@ import {
   attemptSignature,
   boundedMs,
   canExpress,
+  promosToSend,
   createStopwatch,
   readAttempt,
   readOrderingStatus,
@@ -1147,6 +1148,10 @@ let checkoutOpenedAt = 0;
 // Tiempo mínimo antiabuso (elapsed_ms ≥ 4 s en el servidor): se cuenta desde la carga de la página y no se
 // reinicia al reabrir Datos; con datos recordados se confirmaba en menos de 4 s y quedaba como robot.
 const startedAt = Date.now();
+/** D65: si el cliente pasó por Datos en este intento (vio la casilla de promociones) y la casilla de Confirmar.
+    Duran hasta que el pedido sale (no al cerrar y reabrir): así un reintento conserva la firma y el id (D58). */
+let viaData = false;
+let confirmPromos = false;
 function setStep(step: number) {
   qsa('#co-steps li').forEach((li, i) => li.classList.toggle('is-on', i <= step));
 }
@@ -1280,6 +1285,7 @@ function submitData() {
   // Se recuerdan para el próximo pedido en este navegador (sin cuenta). La autorización no.
   store.set('datos', { ...form, ok: false });
   dataWatch.stop(Date.now());
+  viaData = true;
   stepConfirm();
 }
 function stepConfirm(errorMsg = '') {
@@ -1320,11 +1326,20 @@ function stepConfirm(errorMsg = '') {
         ? ''
         : `<label class="check confirm-ok"><input type="checkbox" id="c-ok"> <span>Autorizo a ${esc(data.restaurantName)} a tratar mis datos para gestionar y entregar este pedido, según la <a href="/privacidad" target="_blank">política de tratamiento de datos</a>. <span class="req">*</span></span></label>`
     }
+    ${
+      // Exprés (D65): lo recordado no cuenta; la casilla opcional sale desmarcada y conserva lo marcado si se repinta.
+      viaData
+        ? ''
+        : `<label class="check confirm-ok"><input type="checkbox" id="c-promo" ${confirmPromos ? 'checked' : ''}> <span>Quiero recibir promociones por WhatsApp (opcional).</span></label>`
+    }
     <div class="confirm-actions">
       <button class="btn btn-primary btn-lg btn-block" type="button" id="send-order">Confirmar pedido · ${money(sum.total)}</button>
       <button class="btn btn-soft btn-block" type="button" id="co-back">Cambiar datos</button>
       <p class="center-note">Sigue tu pedido en vivo con el enlace que te damos al confirmar. Celular ${phone.slice(0, 3)} ${phone.slice(3, 6)} ${phone.slice(6)}.</p>
     </div>`;
+  qs<HTMLInputElement>('#c-promo')?.addEventListener('change', (event) => {
+    confirmPromos = (event.target as HTMLInputElement).checked;
+  });
   qs('#send-order')?.addEventListener('click', placeOrder);
   qs('#co-back')?.addEventListener('click', () => stepData());
 }
@@ -1358,6 +1373,8 @@ async function placeOrder() {
   if (sending) return;
   const consent = qs<HTMLInputElement>('#c-ok');
   if (consent) form.ok = consent.checked;
+  const promoBox = qs<HTMLInputElement>('#c-promo');
+  if (promoBox) confirmPromos = promoBox.checked;
   if (!form.ok) {
     toast('Necesitamos tu autorización de datos para entregar el pedido');
     consent?.focus();
@@ -1392,7 +1409,7 @@ async function placeOrder() {
       coupon: couponCode || undefined,
       items: orderItems(cart),
       acepta_datos: form.ok,
-      promos: form.promos,
+      promos: promosToSend({ viaData, dataPromos: form.promos, confirmPromos }),
     };
     const attempt = attemptFor(loadAttempt() ?? memoryAttempt, attemptSignature(order), () =>
       crypto.randomUUID(),
@@ -1442,6 +1459,11 @@ async function placeOrder() {
     store.set('pedidos', rememberOrder(store.get<RememberedOrder[]>('pedidos', []), placed));
     store.set(LAST_ORDER, snapshotOrder(cart, placed.at)); // D63: para "Repetir mi último pedido"
     saveAttempt(null); // el próximo pedido es otro intento
+    // Un segundo pedido en la misma visita vuelve a pedir las autorizaciones (D65).
+    form.ok = false;
+    form.promos = false;
+    viaData = false;
+    confirmPromos = false;
     syncRepeat();
     cart = [];
     coupon = null;

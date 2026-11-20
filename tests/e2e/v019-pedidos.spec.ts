@@ -1,11 +1,20 @@
 // Pedidos v0.19 contra Supabase LOCAL (D59, D60): anular con mensaje para el cliente e insumos, WhatsApp
 // prellenado, deshacer entregado (10 s, pagehide y otro dispositivo), Cancelados de hoy y una sola región
-// aria-live. Celulares 3580000001–3580000006 y nombres sin dígitos; todo se borra al terminar.
+// aria-live. Celulares 3580000001–3580000007 y nombres sin dígitos; todo se borra al terminar.
 import { expect, test, type Page } from '@playwright/test';
-import { RID, goTo, loginAdmin, loginOperator, placeOrderSql, sql } from './ayudas';
+import { ADMIN_ID, RID, goTo, loginAdmin, loginOperator, placeOrderSql, sql } from './ayudas';
 
-const PHONES = ['3580000001', '3580000002', '3580000003', '3580000004', '3580000005', '3580000006'];
-const [ANULAR, OPERADOR, DESHACER, VENCE, CERRAR, OTRO] = PHONES as [
+const PHONES = [
+  '3580000001',
+  '3580000002',
+  '3580000003',
+  '3580000004',
+  '3580000005',
+  '3580000006',
+  '3580000007',
+];
+const [ANULAR, OPERADOR, DESHACER, VENCE, CERRAR, OTRO, VIEJO] = PHONES as [
+  string,
   string,
   string,
   string,
@@ -53,6 +62,14 @@ test.beforeAll(() => {
   setDbStatus(codeOf(CERRAR), 'en_camino');
   codes[OTRO] = placeOrderSql({ phone: OTRO, name: 'Otro Dispositivo', qty: 2 });
   setDbStatus(codeOf(OTRO), 'en_camino');
+  // Pedido de hace 2 días anulado hoy: fuera de las 36 h que carga el tablero (D60).
+  codes[VIEJO] = placeOrderSql({ phone: VIEJO, name: 'Pedido Viejo', qty: 2 });
+  sql(`update public.orders set status = 'cancelado', cancel_reason = 'Pedido duplicado', voided_from = 'nuevo',
+    created_at = now() - interval '2 days' where ${where(codeOf(VIEJO))}`);
+  sql(`update public.order_events set at = now() - interval '2 days'
+    where order_id = (select id from public.orders where ${where(codeOf(VIEJO))})`);
+  sql(`insert into public.order_events (order_id, restaurant_id, status, by_user, at)
+    select id, restaurant_id, 'cancelado', '${ADMIN_ID}', now() - interval '1 minute' from public.orders where ${where(codeOf(VIEJO))}`);
 });
 test.afterAll(() => {
   cleanup();
@@ -146,6 +163,17 @@ test('operador cancela con "Otro" mensaje y recibe el enlace de WhatsApp (D59)',
   expect(
     sql(`select cancel_public || '|' || supplies_restored from public.orders where ${where(code)}`),
   ).toBe('Se nos acabó el pan de hoy|true');
+
+  await done.getByRole('button', { name: 'Listo' }).click();
+
+  // Cancelados de hoy sale de la RPC (todo el equipo): incluye el pedido viejo anulado hoy, que el tablero no carga.
+  const section = page.getByRole('region', { name: 'Cancelados de hoy' });
+  await section.getByRole('button', { name: /Cancelados de hoy/ }).click();
+  await expect(section.getByTestId(`cancelado-${code}`)).toBeVisible(); // recargó al cancelar
+  const old = section.getByTestId(`cancelado-${codeOf(VIEJO)}`);
+  await expect(old).toContainText('Pedido duplicado');
+  await expect(old.locator('dd').last()).not.toHaveText('—');
+  await expect(page.getByTestId(`pedido-${codeOf(VIEJO)}`)).toHaveCount(0);
 });
 
 test('Entregado espera 10 s con Deshacer; deshacer no envía nada (D60)', async ({ page }) => {

@@ -5,6 +5,7 @@ import {
   attemptSignature,
   boundedMs,
   canExpress,
+  promosToSend,
   createStopwatch,
   readAttempt,
   readOrderingStatus,
@@ -71,6 +72,17 @@ describe('canExpress', () => {
     expect(canExpress(null, ctx)).toBe(false);
     expect(canExpress({ ...good, zone: 'vieja' }, ctx)).toBe(false);
     expect(canExpress(readSavedForm({}), ctx)).toBe(false);
+  });
+});
+
+describe('promosToSend (D65)', () => {
+  it('por Datos manda la casilla de Datos', () => {
+    expect(promosToSend({ viaData: true, dataPromos: true, confirmPromos: false })).toBe(true);
+    expect(promosToSend({ viaData: true, dataPromos: false, confirmPromos: true })).toBe(false);
+  });
+  it('por exprés ignora lo recordado y solo cuenta la casilla de Confirmar', () => {
+    expect(promosToSend({ viaData: false, dataPromos: true, confirmPromos: false })).toBe(false);
+    expect(promosToSend({ viaData: false, dataPromos: false, confirmPromos: true })).toBe(true);
   });
 });
 

@@ -3,7 +3,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatCop as money } from '../core/money';
 import { toCsv } from '../core/sales';
 import { promoExportFileName, promoExportRows } from '../core/security';
-import { exportPromoCustomers, loadCustomers, updateCustomer, type CustomerRow } from './customers-data';
+import {
+  exportPromoCustomers,
+  loadCustomers,
+  revokePromos,
+  updateCustomer,
+  type CustomerRow,
+} from './customers-data';
 import { Modal, useToast } from './ui';
 
 const dateFmt = new Intl.DateTimeFormat('es-CO', { timeZone: 'America/Bogota', dateStyle: 'medium' });
@@ -55,6 +61,25 @@ export function Clientes() {
     }
   }
 
+  /** D65: retirar la autorización de promociones (la vista ya es solo de administración; la base lo exige). */
+  async function withdraw(row: CustomerRow) {
+    if (
+      !confirm(
+        `¿Retirar la autorización de promociones de ${row.name}? Deja de salir en la exportación y queda en la auditoría.`,
+      )
+    )
+      return;
+    try {
+      await revokePromos(row.id);
+      const fresh = await loadCustomers(row.phone, 0).catch(() => null);
+      const updated = fresh?.rows.find((item) => item.id === row.id) ?? { ...row, promos: false };
+      setRows((list) => list.map((item) => (item.id === row.id ? updated : item)));
+      toast('Autorización de promociones retirada.');
+    } catch (failure) {
+      toast(failure instanceof Error ? failure.message : 'No se pudo retirar la autorización.');
+    }
+  }
+
   return (
     <section className="card">
       <div className="card-head">
@@ -92,6 +117,7 @@ export function Clientes() {
               <div className="cli-tags">
                 {row.trusted ? <span className="tag tag-ok">Confiable</span> : null}
                 {row.blocked ? <span className="tag tag-bad">Bloqueado</span> : null}
+                {row.promos ? <span className="tag tag-ok">Acepta promociones</span> : null}
               </div>
               {row.notes ? <small className="muted cli-notes">{row.notes}</small> : null}
             </div>
@@ -120,6 +146,11 @@ export function Clientes() {
               <button className="btn btn-soft btn-sm" type="button" onClick={() => setEditing(row)}>
                 Notas
               </button>
+              {row.promos ? (
+                <button className="btn btn-soft btn-sm" type="button" onClick={() => void withdraw(row)}>
+                  Retirar autorización
+                </button>
+              ) : null}
             </div>
           </li>
         ))}
